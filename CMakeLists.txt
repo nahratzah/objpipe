@@ -80,5 +80,6 @@ add_subdirectory (test)
 find_package(Doxygen REQUIRED mscgen OPTIONAL_COMPONENTS dot)
 
 if(DOXYGEN_FOUND)
-  doxygen_add_docs(objpipe-doc include)
+  set(DOXYGEN_USE_MDFILE_AS_MAINPAGE "README.md")
+  doxygen_add_docs(objpipe-doc ${DOXYGEN_USE_MDFILE_AS_MAINPAGE} include)
 endif()
