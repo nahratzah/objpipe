@@ -16,6 +16,18 @@ An objpipe has three components:
 
 Objpipe allows interface boundaries between each of those.
 
+Objpipe provides all of:
+1. A range concept (like
+   [Boost iterator](http://www.boost.org/doc/libs/1_66_0/libs/iterator/doc/index.html),
+   [Boost range](http://www.boost.org/doc/libs/1_66_0/libs/range/doc/html/index.html),
+   and [Range-v3](https://github.com/ericniebler/range-v3))
+   and associated ability to transform and iterate this range.
+2. A push interface (like
+   [Reactive Extensions for C++](https://github.com/Reactive-Extensions/RxCpp)).
+3. An interface to erase underlying implementation details.
+4. The ability to select between the using the range concept, or push interface,
+   *at the call site*, instead of at the implementation point.
+
 ## Rationale
 
 I have a lot of files that model collections of data.
@@ -280,20 +292,27 @@ In both cases, the include directories are set correctly.
    Contrary to objpipe,
    it also allows for the iterator to modify the collection it iterates over (under certain conditions)
    and usually maintains the iterator category.
-2. [Reactive Extensions for C++](https://github.com/Reactive-Extensions/RxCpp)
+2. [Boost range](http://www.boost.org/doc/libs/1_66_0/libs/range/doc/html/index.html)
+   provides a range interface, similar to the pull interface of objpipe.
+   Similar to boost iterator (mentioned above) and Range-v3 (mentioned below) it preserves the iterator category.
+3. [Reactive Extensions for C++](https://github.com/Reactive-Extensions/RxCpp)
    implements transformations and iteration.
    Like objpipe's push interface, it is based on streaming values.
    In addition, its observables allow for multiple subscribers, while objpipe always uses a single subscriber.
    Unlike objpipe, it does not have a pull based interface.
-3. [Range-v3](https://github.com/ericniebler/range-v3)
+4. [Range-v3](https://github.com/ericniebler/range-v3)
    conceptualizes sequences, like objpipe does.
    Range-v3 ranges do not own their data, while objpipe does own its data (with some explicit exceptions).
    Unlike objpipe, it does not seem to have an abstraction of a range, like objpipe::reader provides.
-4. A combination of
+5. A combination of
    [STL algorithm](http://en.cppreference.com/w/cpp/header/algorithm) calls, such as
    [std::transform](http://en.cppreference.com/w/cpp/algorithm/transform),
    [std::copy\_if](http://en.cppreference.com/w/cpp/algorithm/copy),
    can be used to achieve the same transformation effects, but would lose the streaming property.
+6. Range-based-for iteration (``for (auto item : collection)``) with a code block can achieve the same effect.
+7. [Java streams](https://docs.oracle.com/javase/8/docs/api/java/util/stream/package-summary.html#package.description)
+   does the same thing as the above, but for Java, instead of C++.
+   In particular, it's (parallelizable) reduction operations inspired the way of reducing that is used in objpipe.
 
 ## Additional Documentation
 
