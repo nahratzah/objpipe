@@ -16,6 +16,133 @@ An objpipe has three components:
 
 Objpipe allows interface boundaries between each of those.
 
+## Rationale
+
+I have a lot of files that model collections of data.
+And there are different file formats.
+And I need to iterate over all this data.
+
+A collection interface wouldn't work,
+because it would pin down the iterator type.
+In the example below, the iterator type necessitates all files
+to contain a vector:
+
+    class FileInterface {
+     public:
+      // The interface now imposes a specific collection on all
+      // implementations, in this case std::vector<int>.
+      virtual std::vector<int>::iterator begin() const = 0;
+      virtual std::vector<int>::iterator end() const = 0;
+    };
+
+The standard way of dealing with this, is to use a callback function.
+However, this makes it very hard to do composition, as each callback
+needs to wrap the composing callback, leading to hard to understand code.
+
+    class FileInterface {
+     public:
+      virtual void visit(std::function<void(int)> callback) = 0;
+    };
+
+    class OnlyEvenNumbersFile
+    : public FileInterface
+    {
+     public:
+      // This function becomes rather hard to understand, if there
+      // is a more complex set of operations going on!
+      virtual void visit(std::function<void(int)> callback) override {
+        file->visit(
+            [callback](int x) {
+              if (x % 2 == 0)
+                callback(x);
+            });
+      }
+
+     private:
+      std::shared_ptr<FileInterface> file;
+    };
+
+Instead of this, I wanted to decouple the interface and implementation,
+while still keeping the code readable.
+Objpipe does this, by allowing functional (read-only) access to data,
+abstracting away the implementation and life time considerations.
+
+This way, each implementation can deal with data in the way that's best
+suited for it.
+While composition can be achieved by applying transformations on the objpipe.
+
+    class FileInterface {
+     public:
+      virtual objpipe::reader<int> getData() const = 0;
+    };
+
+    class VectorFile
+    : public std::enable_shared_from_this<VectorFile>,
+      public FileInterface
+    {
+     public:
+      // Not a file, just a collection with data.
+      virtual objpipe::reader<int> getData() const override {
+        return objpipe::of(this->shared_from_this())
+            .deref()
+            .transform(&VectorFile::data)
+            .iterate();
+      }
+
+     private:
+      std::vector<int> data;
+    };
+
+    class StreamFile
+    : public FileInterface
+    {
+     public:
+      // Read directly from a file.
+      virtual objpipe::reader<int> getData() const override {
+        std::fstream file(fileName, std::ios_base::in);
+
+        // objpipe::new_array iterates over the range at construction time.
+        // It's possible to delay this until the objpipe is evaluated,
+        // but since file is not iterable by itself, this would require some
+        // code, which is beyond the scope of this example.
+        return objpipe::new_array(
+            std::istream_iterator<int>(file)
+            std::istream_iterator<int>());
+      }
+
+     private:
+      std::string fileName;
+    };
+
+    class ManyFiles
+    : public FileInterface
+    {
+     public:
+      // Composition pattern, that concatenates contents from multiple files.
+      virtual objpipe::reader<int> getData() const override {
+        objpipe::of(files) // Copy, since passed by lvalue reference.
+            .iterate()
+            .transform(
+                [](const std::unique_ptr<FileInterface>& file_ptr) {
+                  return file_ptr->getData();
+                })
+            .iterate(); // Unpack the collections from getData().
+      }
+
+     private:
+      std::vector<std::unique_ptr<FileInterface>> files;
+    };
+
+As can be seen, this allows for a wide variety of implementations, all of
+which are hidden behind a common interface.
+
+In addition, the caller of the ``FileInterface::getData()`` method is free
+to decide how to handle the data:
+1. they could iterate over it
+2. they could copy it into a new collection
+3. they could decide to go for a callback after all (but now, the choice is not imposed by the interface)
+4. etc.
+
 ### Example: simple transformation
 
 This example computes the squares of 1, 2, and 3.
