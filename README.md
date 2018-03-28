@@ -285,7 +285,11 @@ In both cases, the include directories are set correctly.
    Like objpipe's push interface, it is based on streaming values.
    In addition, its observables allow for multiple subscribers, while objpipe always uses a single subscriber.
    Unlike objpipe, it does not have a pull based interface.
-3. A combination of
+3. [Range-v3](https://github.com/ericniebler/range-v3)
+   conceptualizes sequences, like objpipe does.
+   Range-v3 ranges do not own their data, while objpipe does own its data (with some explicit exceptions).
+   Unlike objpipe, it does not seem to have an abstraction of a range, like objpipe::reader provides.
+4. A combination of
    [STL algorithm](http://en.cppreference.com/w/cpp/header/algorithm) calls, such as
    [std::transform](http://en.cppreference.com/w/cpp/algorithm/transform),
    [std::copy\_if](http://en.cppreference.com/w/cpp/algorithm/copy),
