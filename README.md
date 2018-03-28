@@ -252,7 +252,7 @@ Another map reduce, that collects all elements into a set.
 
 This is a header-only library.
 
-To use it, you can simple supply ``-I/path/to/monsoon-cache/include`` to the
+To use it, you can simple supply ``-I/path/to/objpipe/include`` to the
 compiler.
 The callback requires that boost/context be linked in and
 that boost/coroutines2 is on the include path.
@@ -263,7 +263,7 @@ a git submodule:
     add_subdirectory(path/to/objpipe)
     target_link_libraries(my_target objpipe)
 
-If monsoon-cache is properly installed, the following should work:
+If objpipe is properly installed, the following should work:
 
     find_package(objpipe 0.0 REQUIRED)
     target_link_libraries(my_target objpipe)
