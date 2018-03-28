@@ -118,6 +118,10 @@ class callback_fn_wrapper {
  * \tparam T The type of elements yielded by the function.
  * This should not be the plain type, without reference, const, or volatile qualifiers.
  * \tparam Fn The function type, which is to yield values using a callback.
+ *
+ * \note
+ * C++ does not currently have co-routines, but they are likely to appear in C++20.
+ * At that point, this implementation will be augmented to select native co-routines instead.
  */
 template<typename T, typename Fn>
 class callback_pipe {
