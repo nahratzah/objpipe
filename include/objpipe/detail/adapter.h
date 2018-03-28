@@ -528,6 +528,8 @@ class adapter_t {
    *
    * \param[in] fn A predicate returning a boolean.
    * \return The same objpipe.
+   *
+   * \bug Assertions are not implemented.
    */
   template<typename Fn>
   auto assertion(Fn&& fn) &&
