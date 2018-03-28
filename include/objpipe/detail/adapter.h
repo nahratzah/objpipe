@@ -33,6 +33,9 @@
 namespace objpipe::detail {
 
 
+///\brief Wrap a source inside an adapter.
+///\ingroup objpipe_detail
+///\relates adapter_t
 template<typename Source>
 constexpr auto adapter(Source&& src)
 noexcept(std::is_nothrow_constructible_v<adapter_t<std::decay_t<Source>>, Source>)
@@ -113,6 +116,15 @@ class adapter_iterator {
  *
  * \tparam Source The source that is to be wrapped.
  * \sa \ref objpipe::reader
+ *
+ * \bug
+ * The adapter provides the front(), pop_front(), pull(), etc methods.
+ * This necessitates it containing temporary \ref adapter_t::store_ "store variable".
+ * Because of this, each intermediate operation creates and destroys this temporary
+ * variable.
+ * It dilutes the purpose of the adapter as a move-only builder and may make users
+ * erroneously think they are allowed to mix \ref adapter_t::front() and \ref adapter_t::transform() for instance.
+ * Consider splitting off those functions into a dedicated type that can be created by a call to ``as_queue()``.
  */
 template<typename Source>
 class adapter_t {
@@ -896,10 +908,16 @@ template<typename T>
 struct adapter_underlying_type_<T, true> {
   using type = std::decay_t<decltype(std::declval<T>().underlying())>;
 };
+///\brief The source type used by an adapter.
+///\details The member type ``type`` is the unqualified source implementation.
+///If the type is not an adapter type, the ``type`` element shall be omitted.
+///\tparam T An adapter implementation.
 template<typename T>
 struct adapter_underlying_type
 : adapter_underlying_type_<T>
 {};
+///\brief The underlying source type of an adapter.
+///\relates adapter_underlying_type
 template<typename T>
 using adapter_underlying_type_t = typename adapter_underlying_type<T>::type;
 
