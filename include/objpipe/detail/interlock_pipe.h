@@ -17,6 +17,7 @@ namespace objpipe::detail {
 
 /**
  * \brief Acceptor interface for interlock.
+ * \ingroup objpipe_detail
  * \details Interlock needs an interface, in order to make the acceptor
  * available to its \ref interlock_writer "writers".
  *
@@ -96,6 +97,7 @@ class interlock_acceptor_intf {
 
 /**
  * \brief Implementation of interlock_acceptor_impl, where the wrapped acceptor is shared across multiple threads.
+ * \ingroup objpipe_detail
  * \details Since the acceptor is shared, this acceptor must implement synchronization.
  */
 template<typename T, typename Acceptor>
@@ -181,6 +183,7 @@ class interlock_acceptor_impl_shared final
 
 
 ///\brief Acceptor wrapper for unordered traversal of interlock.
+///\ingroup objpipe_detail
 ///\details In the unordered case, we can use copies of the acceptor,
 ///instead of synchronizing shared access via a mutex.
 template<typename T, typename Acceptor>
@@ -278,6 +281,7 @@ class interlock_acceptor_impl_unordered final
 
 /**
  * \brief Implementation of interlock shared data structure.
+ * \ingroup objpipe_detail
  * \details
  * This data structure is used to communicate between
  * the \ref interlock_writer "interlock writers"
