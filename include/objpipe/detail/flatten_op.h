@@ -49,19 +49,26 @@ template<typename Source>
 constexpr bool can_flatten = can_flatten_<Source>::value;
 
 
-template<typename Collection, typename Sink, bool Multithreaded>
+template<typename Collection, typename Sink, typename TagType>
 class flatten_push {
  public:
-  explicit flatten_push(Sink&& sink)
+  explicit flatten_push(Sink&& sink, TagType&& tag)
   noexcept(std::is_nothrow_move_constructible_v<Sink>)
-  : sink_(std::move(sink))
+  : sink_(std::move(sink)),
+    tag_(std::move(tag))
+  {}
+
+  explicit flatten_push(Sink&& sink, const TagType& tag)
+  noexcept(std::is_nothrow_move_constructible_v<Sink>)
+  : sink_(std::move(sink)),
+    tag_(tag)
   {}
 
   auto operator()(Collection&& c)
   -> objpipe_errc {
     using std::swap;
 
-    if constexpr(!Multithreaded) {
+    if constexpr(!std::is_base_of_v<multithread_push, TagType>) {
       auto b = make_move_iterator(flatten_op_begin_(c));
       auto e = make_move_iterator(flatten_op_end_(c));
       objpipe_errc error_code = objpipe_errc::success;
@@ -75,14 +82,31 @@ class flatten_push {
       Sink dst = sink_; // Copy.
       swap(dst, sink_); // Keep hold of successor.
 
+      // If collection is an adapter and we can use ioc_push on it,
+      // use that in favour of normal iteration.
+      if constexpr(is_adapter_v<std::decay_t<Collection>>) {
+        if constexpr(adapt::has_ioc_push<adapter_underlying_type_t<Collection>, TagType>) {
+          if (c.underlying().can_push(tag_)) {
+            std::move(c).underlying().ioc_push(
+                tag_,
+                std::move(dst));
+            return objpipe_errc::success;
+          }
+        }
+      }
+
       thread_pool::default_pool().publish(
           make_task(
               [](Sink&& dst, Collection&& c) {
                 try {
-                  std::for_each(
-                      make_move_iterator(flatten_op_begin_(c)),
-                      make_move_iterator(flatten_op_end_(c)),
-                      std::ref(dst));
+                  auto b = make_move_iterator(flatten_op_begin_(c));
+                  auto e = make_move_iterator(flatten_op_end_(c));
+
+                  objpipe_errc error_code = objpipe_errc::success;
+                  while (b != e && error_code == objpipe_errc::success) {
+                    error_code = dst(*b);
+                    ++b;
+                  }
                 } catch (...) {
                   dst.push_exception(std::current_exception());
                 }
@@ -114,6 +138,7 @@ class flatten_push {
 
  private:
   Sink sink_;
+  TagType tag_;
 };
 
 
@@ -410,13 +435,13 @@ class flatten_op {
     using wrapper = flatten_push<
         std::remove_cv_t<std::remove_reference_t<raw_collection_type>>,
         std::decay_t<Acceptor>,
-        std::is_base_of_v<multithread_push, std::decay_t<PushTag>>>;
+        std::decay_t<PushTag>>;
 
     // adapt::ioc_push will provide a fallback if multithread_push is unavailable.
     adapt::ioc_push(
         std::move(src_),
         tag,
-        wrapper(std::forward<Acceptor>(acceptor)));
+        wrapper(std::forward<Acceptor>(acceptor), tag));
   }
 
  private:
