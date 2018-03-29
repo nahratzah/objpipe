@@ -56,6 +56,8 @@ class thread_pool_task_impl final
   F f_;
 };
 
+///\brief Thread pool task that completes a future.
+///\ingroup objpipe_detail
 template<typename F>
 class thread_pool_task_future final
 : public thread_pool_task
@@ -64,12 +66,18 @@ class thread_pool_task_future final
   using functor_result = std::remove_cv_t<std::remove_reference_t<invoke_result_t<F>>>;
   using promise_type = std::promise<functor_result>;
 
+  ///\brief Constructor.
+  ///\param[in] prom The promise to complete after running the functor.
+  ///\param[in] f The functor to run.
   explicit thread_pool_task_future(promise_type&& prom, F&& f)
   noexcept(std::is_nothrow_move_constructible_v<F>)
   : f_(std::move(f)),
     prom_(std::move(prom))
   {}
 
+  ///\brief Constructor.
+  ///\param[in] prom The promise to complete after running the functor.
+  ///\param[in] f The functor to run.
   explicit thread_pool_task_future(promise_type&& prom, const F& f)
   noexcept(std::is_nothrow_copy_constructible_v<F>)
   : f_(f),
@@ -78,6 +86,7 @@ class thread_pool_task_future final
 
   ~thread_pool_task_future() noexcept {}
 
+  ///\brief Invokes the callable and completes the future with the result.
   auto operator()()
   noexcept(is_nothrow_invocable_v<F>)
   -> void {
@@ -98,10 +107,22 @@ class thread_pool_task_future final
   promise_type prom_;
 };
 
-///\ingroup objpipe_detail
+/**
+ * \brief Implementation of the thread pool.
+ * \ingroup objpipe_detail
+ * \details
+ * The thread pool manages a number of threads, which execute tasks given
+ * to the pool.
+ *
+ * \bug The thread pool is probably inefficient if given lots of really fast
+ * to complete tasks, as it uses a single mutex shared between task-publishing
+ * and worker threads.
+ */
 class thread_pool_impl {
  public:
+  ///\brief Duration type for thread expiry.
   using duration_t = std::chrono::milliseconds;
+  ///\brief Pointer type for tasks.
   using task_ptr = std::unique_ptr<thread_pool_task>;
 
  private:
@@ -208,6 +229,9 @@ class thread_pool_impl {
     thr_expire_ = std::max(thr_expire, duration_t(0));
   }
 
+  ///\brief Query the expire timer of threads.
+  ///\returns The duration for which a worker thread will sleep with no
+  ///work pending, until it stops itself.
   auto thr_expire() const
   noexcept
   -> duration_t {
@@ -240,6 +264,7 @@ class thread_pool_impl {
     return true;
   }
 
+  ///\brief Worker invocation.
   static auto worker_(thread_pool_impl* self)
   -> void {
     const bool delete_self = self->worker_loop_();
