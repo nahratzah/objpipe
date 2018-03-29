@@ -164,9 +164,13 @@ class adapter_t {
   using store_type = transport<adapt::front_type<Source>>;
 
  public:
+  ///\brief Value type (unqualified) of the elements in this objpipe.
   using value_type = adapt::value_type<Source>;
+  ///\brief Iterator type for iterating over this objpipe.
   using iterator = adapter_iterator<Source>;
 
+  ///\brief Default constructor.
+  ///\details Only exists if the underlying type is default constructible.
   constexpr adapter_t() = default;
 
   ///\brief Constructor, wraps the given source.
@@ -870,11 +874,32 @@ class adapter_t {
     return std::move(src_);
   }
 
+  /**
+   * \brief Change the objpipe to async resolution.
+   * \details
+   * Effectively the same as:
+   * \code
+   * async(singlethread_push())
+   * \endcode
+   */
   auto async() &&
   -> decltype(auto) {
     return std::move(*this).async(singlethread_push());
   }
 
+  /**
+   * \brief Change the objpipe to async resolution.
+   * \details
+   * The returned adapter is asynchronous and only allows a single
+   * operation to be called on it.
+   *
+   * \param[in] push_tag The push policy to use for async resolution.
+   * One of:
+   * \ref existingthread_push,
+   * \ref singlethread_push,
+   * \ref multithread_push,
+   * \ref multithread_unordered_push.
+   */
   template<typename PushTag>
   auto async(PushTag push_tag)
   -> std::enable_if_t<std::is_base_of_v<existingthread_push, std::decay_t<PushTag>>, async_adapter_t<Source, std::decay_t<PushTag>>> {
