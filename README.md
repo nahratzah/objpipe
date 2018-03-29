@@ -253,7 +253,7 @@ Another map reduce, that collects all elements into a set.
             [](std::set<int>& state, int&& element) { // Value acceptor functor.
               state.insert(std::move(element));
             },
-            [](std::set<int>& dst, std::set<int>&& to_add) { // Merge operation across states.
+            [](std::set<int>& state, std::set<int>&& to_add) { // Merge operation across states.
               state.merge(std::move(to_add));
             },
             [](std::set<int>&& state) { // Extract result from reduction.
