@@ -18,6 +18,10 @@
 namespace objpipe::detail {
 
 
+///\brief Computes the conjunction of all predicate arguments applied to \p v.
+///\ingroup objpipe_detail
+///\relates filter_op
+///\relates filter_push
 template<typename Arg, typename Fn0, typename... Fn>
 constexpr auto filter_test_(const Arg& v, const Fn0& pred0, const Fn&... preds)
 noexcept(std::conjunction_v<
@@ -32,6 +36,9 @@ noexcept(std::conjunction_v<
 }
 
 
+///\brief Ioc_push acceptor counterpart of filter_op.
+///\ingroup objpipe_detail
+///\relates filter_op
 template<typename Sink, typename... Pred>
 class filter_push {
  public:
@@ -42,6 +49,8 @@ class filter_push {
     pred_(std::move(pred))
   {}
 
+  ///\brief Accepts a value.
+  ///\details If the predicates hold, the value if forwarded to sink_.
   template<typename T>
   auto operator()(T&& v)
   -> objpipe_errc {
@@ -49,6 +58,7 @@ class filter_push {
     return sink_(std::forward<T>(v));
   }
 
+  ///\brief Accept an exception.
   auto push_exception(std::exception_ptr exptr)
   noexcept
   -> void {
@@ -56,12 +66,16 @@ class filter_push {
   }
 
  private:
+  ///\brief Test the predicates on \p v.
+  ///\details This template ensures \p v will be a const reference.
   template<typename T>
   constexpr auto test(const T& v) const
   -> bool {
     return test(v, std::index_sequence_for<Pred...>());
   }
 
+  ///\brief Test the predicates on \p v.
+  ///\tparam Idx Indices used to std::get the predicates.
   template<typename T, std::size_t... Idx>
   constexpr auto test(const T& v,
       std::index_sequence<Idx...>) const
@@ -69,7 +83,9 @@ class filter_push {
     return filter_test_(v, std::get<Idx>(pred_)...);
   }
 
+  ///\brief Next acceptor in the chain.
   Sink sink_;
+  ///\brief All predicates that are to be tested.
   std::tuple<Pred...> pred_;
 };
 

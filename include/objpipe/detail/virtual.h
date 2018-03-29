@@ -17,33 +17,50 @@
 namespace objpipe::detail {
 
 
+///\brief Interface for ioc_push acceptors.
+///\ingroup objpipe_detail
+///\details
+///The interface allows bridging the interface barrier that virtual_pipe makes.
 template<typename T>
 class virtual_push_acceptor_intf {
  public:
+  ///\brief Destructor.
   virtual ~virtual_push_acceptor_intf() noexcept {}
 
+  ///\brief Push a value to the acceptor wrapped by the implementation.
   virtual auto operator()(T v) -> objpipe_errc = 0;
+  ///\brief Push an exception to the acceptor wrapped by the implementation.
   virtual auto push_exception(std::exception_ptr exptr) noexcept -> void = 0;
+  ///\brief Create a copy of the acceptor, if it is copyable.
+  ///\throws std::logic_error if the implementation is not copy constructible.
   virtual auto clone() const -> std::unique_ptr<virtual_push_acceptor_intf> = 0;
 };
 
+///\brief Implementation of virtual_push_acceptor_intf that wraps an acceptor.
+///\ingroup objpipe_detail
 template<typename T, typename Impl>
 class virtual_push_acceptor_impl
 : public virtual_push_acceptor_intf<T>
 {
  public:
+  ///\brief Constructor.
+  ///\param[in] impl The acceptor to wrap.
   explicit virtual_push_acceptor_impl(Impl&& impl)
   noexcept(std::is_nothrow_move_constructible_v<Impl>)
   : impl_(std::move(impl))
   {}
 
+  ///\brief Constructor.
+  ///\param[in] impl The acceptor to wrap.
   explicit virtual_push_acceptor_impl(const Impl& impl)
   noexcept(std::is_nothrow_copy_constructible_v<Impl>)
   : impl_(impl)
   {}
 
+  ///\brief Destructor.
   ~virtual_push_acceptor_impl() noexcept override {}
 
+  ///\copydoc virtual_push_acceptor_intf::operator()(T)
   auto operator()(T v)
   -> objpipe_errc override {
     if constexpr(is_invocable_v<Impl&, T>)
@@ -52,59 +69,81 @@ class virtual_push_acceptor_impl
       return std::invoke(impl_, v);
   }
 
+  ///\copydoc virtual_push_acceptor_intf::push_exception
   auto push_exception(std::exception_ptr exptr)
   noexcept
   -> void override {
     impl_.push_exception(exptr);
   }
 
+  ///\copydoc virtual_push_acceptor_intf::clone
   auto clone()
   const
   -> std::unique_ptr<virtual_push_acceptor_intf<T>> override {
     if constexpr(std::is_copy_constructible_v<Impl>)
       return std::make_unique<virtual_push_acceptor_impl>(impl_);
     else
-      throw std::runtime_error("push acceptor is not copy constructible");
+      throw std::logic_error("push acceptor is not copy constructible");
   }
 
  private:
+  ///\brief Wrapped acceptor implementation.
   Impl impl_;
 };
 
+///\brief Acceptor used by virtual_pipe's ioc_push interface.
 template<typename T>
 class virtual_push_acceptor {
  public:
-  virtual_push_acceptor() = default;
+  virtual_push_acceptor() = delete;
 
+  ///\brief Wrap an acceptor.
+  ///\note This constructor only participates in overload resolution
+  ///if \p impl is not virtual_push_acceptor.
+  ///\param[in] impl The acceptor to wrap.
   template<typename Impl, typename = std::enable_if_t<!std::is_base_of_v<virtual_push_acceptor, std::decay_t<Impl>>>>
   explicit virtual_push_acceptor(Impl&& impl)
   : impl_(std::make_unique<virtual_push_acceptor_impl<T, std::decay_t<Impl>>>(std::forward<Impl>(impl)))
   {}
 
+  ///\brief Move constructor.
   virtual_push_acceptor(virtual_push_acceptor&& rhs)
   noexcept
   : impl_(std::move(rhs.impl_))
   {}
 
+  ///\brief Copy constructor.
+  ///details Throws std::logic_error if the acceptor is not copyable.
   virtual_push_acceptor(const virtual_push_acceptor& rhs)
   : impl_(rhs.impl_ == nullptr ? nullptr : rhs.impl_->clone())
   {}
 
   virtual_push_acceptor& operator=(const virtual_push_acceptor& rhs) = delete;
 
+  ///\brief Move assignment.
+  ///\details Required to meet the swappable concept.
   virtual_push_acceptor& operator=(virtual_push_acceptor&& rhs) {
     impl_ = std::move(rhs.impl_);
     return *this;
   }
 
+  ///\brief Accept a value by rvalue reference.
+  ///\details
+  ///Forwards the value to the wrapper, which in turn forwards it
+  ///to the implementation that was passed at construction time.
   auto operator()(T&& v) -> objpipe_errc {
     return (*impl_)(std::move(v));
   }
 
+  ///\brief Accept a value by const reference.
+  ///\details
+  ///Forwards the value to the wrapper, which in turn forwards it
+  ///to the implementation that was passed at construction time.
   auto operator()(const T& v) -> objpipe_errc {
     return (*impl_)(v);
   }
 
+  ///\brief Accept an exception.
   auto push_exception(std::exception_ptr exptr)
   noexcept
   -> void {
@@ -112,6 +151,7 @@ class virtual_push_acceptor {
   }
 
  private:
+  ///\brief Pointer to the wrapper around implementation.
   std::unique_ptr<virtual_push_acceptor_intf<T>> impl_;
 };
 
@@ -142,6 +182,7 @@ class virtual_intf {
 
 ///\brief Internal implementation to virtualize an objpipe.
 ///\ingroup objpipe_detail
+///\tparam Source The objpipe source that is to be abstracted.
 template<typename Source>
 class virtual_impl
 : public virtual_intf<adapt::value_type<Source>>
@@ -242,6 +283,7 @@ class virtual_impl
   }
 
  private:
+  ///\brief Underlying source.
   Source src_;
 };
 
@@ -317,6 +359,7 @@ class virtual_pipe {
   }
 
  private:
+  ///\brief Pointer to the implementation of the acceptor that is abstracted away.
   std::unique_ptr<virtual_intf<T>> pimpl_;
 };
 

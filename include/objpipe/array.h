@@ -19,7 +19,7 @@ namespace objpipe {
  * \note If you want to iterate an entire collection,
  * \ref objpipe::of "objpipe::of"
  * followed by
- * \ref ojbpipe::detail::adapter_t::iterate ".iterate()"
+ * \ref objpipe::detail::adapter_t::iterate ".iterate()"
  * will have better performance.
  * \code
  * of(collection).iterate()
@@ -45,7 +45,7 @@ auto new_array(Iter b, Iter e, Alloc alloc = Alloc())
  * \note If you want to iterate an entire collection,
  * \ref objpipe::of "objpipe::of"
  * followed by
- * \ref ojbpipe::detail::adapter_t::iterate ".iterate()"
+ * \ref objpipe::detail::adapter_t::iterate ".iterate()"
  * will have better performance.
  * \code
  * of(collection).iterate()

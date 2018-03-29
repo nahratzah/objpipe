@@ -850,6 +850,7 @@ struct acceptor_adapter {
 ///\brief Reduction merger that does not do anything.
 ///\ingroup objpipe_detail
 struct noop_merger {
+  ///\brief Noop.
   template<typename T>
   void operator()(T& x, T&& y) const {}
 };
@@ -857,6 +858,7 @@ struct noop_merger {
 ///\brief Reduction extractor that does nothing and yields a void result.
 ///\ingroup objpipe_detail
 struct void_extractor {
+  ///\brief Noop.
   template<typename T>
   void operator()(T&& v) const {}
 };
