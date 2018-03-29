@@ -245,8 +245,10 @@ class promise_reducer {
   ///a \ref multithread_push "ordered, multithreaded" reduction.
   class ordered_shared_state {
    private:
+    ///\brief Internal state elements of the reducer.
     class internal_state {
      public:
+      ///\brief Constructor.
       internal_state(promise_reducer::state_type&& state)
       noexcept(std::is_nothrow_move_constructible_v<promise_reducer::state_type>)
       : state(std::move(state))
@@ -257,22 +259,34 @@ class promise_reducer {
       internal_state& operator=(const internal_state&) = delete;
       internal_state& operator=(internal_state&&) = delete;
 
+      ///\brief Reducer state.
       promise_reducer::state_type state;
+      ///\brief Indicates if this reducer state has completed.
       bool ready = false;
     };
 
+    ///\brief List of internal states.
+    ///\note Must be a list, to prevent iterator invalidation.
     using internal_state_list = std::list<internal_state>;
 
    public:
+    ///\brief Exposed state type.
+    ///\details By exposing the iterator, we can merge with siblings at
+    ///completion of this shard of the reduction.
     using state_type = typename internal_state_list::iterator;
 
+    ///\brief Wrap an adapter, so it works on internal_state.
+    ///\ingroup objpipe_detail
     class acceptor_type {
      public:
+      ///\brief Constructor.
+      ///\param[in] impl The acceptor that is to be wrapped.
       acceptor_type(Acceptor&& impl)
       noexcept(std::is_nothrow_move_constructible_v<Acceptor>)
       : impl_(std::move(impl))
       {}
 
+      ///\brief Wraps invocation of Acceptor.
       template<typename Arg>
       auto operator()(state_type& s, Arg&& v) const
       noexcept(is_nothrow_invocable_v<Acceptor, state_type&, Arg>)
@@ -281,9 +295,11 @@ class promise_reducer {
       }
 
      private:
+      ///\brief Wrapped acceptor implementation.
       Acceptor impl_;
     };
 
+    ///\brief Create the shared state.
     ordered_shared_state(std::promise<value_type>&& prom, Init&& init, Acceptor&& acceptor, Merger&& merger, Extractor&& extractor)
     noexcept(std::is_nothrow_copy_constructible_v<std::promise<value_type>>
         && std::is_nothrow_copy_constructible_v<Acceptor>
@@ -301,6 +317,8 @@ class promise_reducer {
     ordered_shared_state& operator=(ordered_shared_state&&) = delete;
     ordered_shared_state& operator=(const ordered_shared_state&) = delete;
 
+    ///\brief Destructor.
+    ///\details Publishes the reduction result, if it completed properly.
     ~ordered_shared_state() noexcept {
       if (!bad_.load(std::memory_order_acquire)) {
         try {
@@ -318,10 +336,14 @@ class promise_reducer {
       }
     }
 
+    ///\brief Test if any of the reduction shards pushed an exception.
+    ///\details If the reduction is bad, there's no point in continuing and it's best to abort quickly.
+    ///\returns True iff an exception was pushed.
     bool is_bad() const noexcept {
       return bad_.load(std::memory_order_relaxed);
     }
 
+    ///\brief Push an exception into the result.
     auto push_exception(std::exception_ptr exptr)
     noexcept
     -> void {
@@ -339,6 +361,8 @@ class promise_reducer {
       }
     }
 
+    ///\brief Mark the given \p state as ready.
+    ///\details Marks the state ready and performs ordered reduction with sibling states that are ready.
     auto publish(state_type state)
     noexcept
     -> void {
@@ -387,6 +411,8 @@ class promise_reducer {
       }
     }
 
+    ///\brief Create the state for a new reducer shard.
+    ///\note This function may only be called once, for the initial state.
     auto new_state()
     -> state_type {
       std::lock_guard<std::mutex> lck{ mtx_ };
@@ -394,6 +420,8 @@ class promise_reducer {
       return pstate_.emplace(pstate_.end(), std::invoke(init()));
     }
 
+    ///\brief Create a state for a new reducer shard, positioned after \p pos.
+    ///\note This function is used to construct sibling states.
     auto new_state(const state_type& pos)
     -> state_type {
       std::lock_guard<std::mutex> lck{ mtx_ };
@@ -401,18 +429,21 @@ class promise_reducer {
       return pstate_.emplace(std::next(pos), std::invoke(init()));
     }
 
+    ///\brief Reference to state factory functor.
     auto init() const
     noexcept
     -> const Init& {
       return init_;
     }
 
+    ///\brief Reference to acceptor functor.
     auto acceptor() const
     noexcept
     -> const acceptor_type& {
       return acceptor_;
     }
 
+    ///\brief Reference to merger functor.
     auto merger() const
     noexcept
     -> const Merger& {
@@ -420,13 +451,24 @@ class promise_reducer {
     }
 
    private:
+    ///\brief Flag that marks the reducer as bad.
     std::atomic<bool> bad_{ false };
+    ///\brief Mutex to protect pstate_.
     std::mutex mtx_;
+    ///\brief Ordered list of shards.
     internal_state_list pstate_;
+    ///\brief Promise to make ready at the end of the reduction.
     std::promise<value_type> prom_;
+    ///\brief Initialization functor.
+    ///\note Use init() to access, for const correctness.
     Init init_;
+    ///\brief Acceptor functor.
+    ///\note Use acceptor() to access, for const correctness.
     acceptor_type acceptor_;
+    ///\brief Merger functor.
+    ///\note Use merger() to access, for const correctness.
     Merger merger_;
+    ///\brief Extractor functor.
     Extractor extractor_;
   };
 
@@ -576,6 +618,7 @@ class promise_reducer {
   ///\note Single thread state is not copy constructible.
   class single_thread_state {
    public:
+    ///\brief Constructor.
     single_thread_state(std::promise<value_type>&& prom, Init&& init, Acceptor&& acceptor, Extractor&& extractor)
     noexcept(std::is_nothrow_constructible_v<state_type, invoke_result_t<Init>>
         && std::is_nothrow_move_constructible_v<std::promise<value_type>>
@@ -588,6 +631,7 @@ class promise_reducer {
       extractor_(std::move(extractor))
     {}
 
+    ///\brief Move constructor.
     single_thread_state(single_thread_state&& other)
     noexcept(std::is_nothrow_move_constructible_v<Acceptor>
         && std::is_nothrow_move_constructible_v<Extractor>
