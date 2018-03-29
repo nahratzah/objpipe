@@ -9,6 +9,17 @@
 namespace objpipe::detail {
 
 
+/**
+ * \brief Pull-based data transport.
+ * \ingroup objpipe_detail
+ * \details
+ * The transport type wraps a value returned by a source, to minimize
+ * the number of intermediate copies that have to be made.
+ *
+ * This specialization transport by value.
+ *
+ * \tparam T An unqualified type.
+ */
 template<typename T>
 class transport {
   static_assert(!std::is_const_v<T> && !std::is_volatile_v<T>,
@@ -113,10 +124,26 @@ class transport {
   std::variant<T, objpipe_errc> data_;
 };
 
+/**
+ * \brief Pull-based data transport.
+ * \ingroup objpipe_detail
+ * \details
+ * The transport type wraps a value returned by a source, to minimize
+ * the number of intermediate copies that have to be made.
+ *
+ * This specialization transport by const reference.
+ * This indicates the type is potentially shared outside the objpipe
+ * and may be accessed exclusively in read-only fashion.
+ *
+ * \tparam T A const-qualified lvalue-reference type.
+ * (The type may not be volatile.)
+ */
 template<typename T>
 class transport<T&> {
   static_assert(std::is_const_v<T>,
       "Transport-by-reference must be const.");
+  static_assert(!std::is_volatile_v<T>,
+      "Transport types may not be volatile.");
 
  public:
   using value_type = std::remove_cv_t<T>;
@@ -203,10 +230,26 @@ class transport<T&> {
   std::variant<T*, objpipe_errc> data_;
 };
 
+/**
+ * \brief Pull-based data transport.
+ * \ingroup objpipe_detail
+ * \details
+ * The transport type wraps a value returned by a source, to minimize
+ * the number of intermediate copies that have to be made.
+ *
+ * This specialization transport by rvalue reference.
+ * This indicates the type is part of data that is owned by the objpipe,
+ * and may be accessed destructively, as well as modified in place.
+ *
+ * \tparam T A non-const rvalue-reference type.
+ * (The type may not be volatile.)
+ */
 template<typename T>
 class transport<T&&> {
   static_assert(!std::is_const_v<T>,
       "Transport-by-rvalue-reference may not be const.");
+  static_assert(!std::is_volatile_v<T>,
+      "Transport types may not be volatile.");
 
  public:
   using value_type = T;
