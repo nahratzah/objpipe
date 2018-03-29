@@ -694,7 +694,7 @@ class promise_reducer {
     ///is assigned.
     ~single_thread_state() noexcept {
       if (!moved_away_) {
-        if (exptr_ != nullptr) {
+        if (exptr_ == nullptr) {
           try {
             if constexpr(std::is_same_v<void, value_type>) {
               std::invoke(std::move(extractor_), std::move(state_));
