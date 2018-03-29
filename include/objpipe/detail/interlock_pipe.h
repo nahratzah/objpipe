@@ -453,7 +453,7 @@ class interlock_impl final
 
     std::unique_lock<std::mutex> lck_{ guard_ };
     if (acceptor_ != nullptr)
-      return acceptor_->push_exception(std::move(exptr));
+      return acceptor_->publish_exception(std::move(exptr));
     if (reader_count_ == 0) return objpipe_errc::closed;
     if (exptr_ != nullptr) return objpipe_errc::bad;
     exptr_ = std::move(exptr);
