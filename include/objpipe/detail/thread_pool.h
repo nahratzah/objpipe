@@ -131,7 +131,7 @@ class thread_pool_impl {
  public:
   ///\brief Create a thread pool.
   ///\details Number of threads is set to std::thread::hardware_concurrency.
-  ///\params[in] thr_expire Idle expiry timeout for threads.
+  ///\param[in] thr_expire Idle expiry timeout for threads.
   ///\returns A shared pointer to the thread_pool_impl.
   static auto create(duration_t thr_expire)
   -> std::shared_ptr<thread_pool_impl> {
@@ -139,8 +139,8 @@ class thread_pool_impl {
   }
 
   ///\brief Create a thread pool.
-  ///\params[in] thr_expire Idle expiry timeout for threads.
-  ///\params[in] max_threads Number of threads in the pool.
+  ///\param[in] thr_expire Idle expiry timeout for threads.
+  ///\param[in] max_threads Number of threads in the pool.
   ///\returns A shared pointer to the thread_pool_impl.
   static auto create(duration_t thr_expire, unsigned int max_threads)
   -> std::shared_ptr<thread_pool_impl> {
@@ -223,7 +223,7 @@ class thread_pool_impl {
   ///
   ///\note The latter condition looks like an off-by-one, but it's correct
   ///as this method is to be invoked *prior* to a new task being enqueued.
-  ///\params[in] lck Lock. Only used to verify the lock is held.
+  ///\param[in] lck Lock. Only used to verify the lock is held.
   ///\returns True if a new thread was started, false otherwise.
   auto maybe_start_thread_([[maybe_unused]] const std::unique_lock<std::mutex>& lck)
   -> bool {
