@@ -882,7 +882,13 @@ class adapter_t {
   }
 
  private:
+  ///\brief Underlying source.
   mutable Source src_;
+  ///\brief Stored result of front().
+  ///details When front() is called, store_ will be set to its result.
+  ///pop_front(), as well as pull() and try_pull(), will clear it again.
+  ///
+  ///This enables us to allow multiple calls to front() to do the right thing.
   mutable store_type store_{ std::in_place_index<1>, objpipe_errc::success };
 };
 

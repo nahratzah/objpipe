@@ -132,7 +132,9 @@ class promise_reducer {
     unordered_shared_state& operator=(const unordered_shared_state&) = delete;
 
     ~unordered_shared_state() noexcept {
-      if (!bad_.load(std::memory_order_acquire)) {
+      if (bad_.load(std::memory_order_acquire)) {
+        prom_.set_exception(std::move(exptr_));
+      } else {
         try {
           if (pstate_.has_value()) { // Should only fail to hold, if constructors fail.
             if constexpr(std::is_same_v<void, value_type>) {
@@ -143,7 +145,7 @@ class promise_reducer {
             }
           }
         } catch (...) {
-          push_exception(std::current_exception());
+          prom_.set_exception(std::current_exception());
         }
       }
     }
@@ -156,17 +158,8 @@ class promise_reducer {
     noexcept
     -> void {
       bool expect_bad = false;
-      if (bad_.compare_exchange_strong(expect_bad, true, std::memory_order_acq_rel, std::memory_order_acquire)) {
-        try {
-          prom_.set_exception(std::move(exptr));
-        } catch (const std::future_error& e) {
-          if (e.code() == std::future_errc::promise_already_satisfied) {
-            /* SKIP (swallow exception) */
-          } else { // Only happens if the promise is in a bad state.
-            throw; // aborts, because noexcept, this is intentional
-          }
-        }
-      }
+      if (bad_.compare_exchange_strong(expect_bad, true, std::memory_order_acq_rel, std::memory_order_relaxed))
+        exptr_ = std::move(exptr);
     }
 
     auto publish(state_type&& state)
@@ -236,6 +229,7 @@ class promise_reducer {
     acceptor_type acceptor_;
     Merger merger_;
     Extractor extractor_;
+    std::exception_ptr exptr_;
   };
 
   ///\brief Shared state for ordered reductions.
@@ -320,7 +314,9 @@ class promise_reducer {
     ///\brief Destructor.
     ///\details Publishes the reduction result, if it completed properly.
     ~ordered_shared_state() noexcept {
-      if (!bad_.load(std::memory_order_acquire)) {
+      if (bad_.load(std::memory_order_acquire)) {
+        prom_.set_exception(std::move(exptr_));
+      } else {
         try {
           if (pstate_.size() == 1u && pstate_.front().ready) { // Should only fail to hold, if constructors fail.
             if constexpr(std::is_same_v<void, value_type>) {
@@ -331,7 +327,7 @@ class promise_reducer {
             }
           }
         } catch (...) {
-          push_exception(std::current_exception());
+          prom_.set_exception(std::current_exception());
         }
       }
     }
@@ -470,6 +466,8 @@ class promise_reducer {
     Merger merger_;
     ///\brief Extractor functor.
     Extractor extractor_;
+    ///\brief Pending exception.
+    std::exception_ptr exptr_;
   };
 
   ///\brief Reducer state for multithread push.
@@ -637,10 +635,11 @@ class promise_reducer {
         && std::is_nothrow_move_constructible_v<Extractor>
         && std::is_nothrow_move_constructible_v<state_type>)
     : prom_(std::move(other.prom_)),
-      bad_(std::exchange(other.bad_, true)), // Ensure other won't attempt to assign a value at destruction.
+      moved_away_(std::exchange(other.moved_away_, true)), // Ensure other won't attempt to assign a value at destruction.
       state_(std::move(other.state_)),
       acceptor_(std::move(other.acceptor_)),
-      extractor_(std::move(other.extractor_))
+      extractor_(std::move(other.extractor_)),
+      exptr_(std::move(other.exptr_))
     {}
 
     single_thread_state(const single_thread_state&) = delete;
@@ -650,7 +649,7 @@ class promise_reducer {
     ///\brief Accept a value by rvalue reference.
     auto operator()(objpipe_value_type&& v)
     -> objpipe_errc {
-      if (bad_) return objpipe_errc::bad;
+      if (moved_away_) return objpipe_errc::bad;
 
       if constexpr(is_invocable_v<Acceptor, state_type&, objpipe_value_type&&>)
         return std::invoke(acceptor_, state_, std::move(v));
@@ -661,7 +660,7 @@ class promise_reducer {
     ///\brief Accept a value by const reference.
     auto operator()(const objpipe_value_type& v)
     -> objpipe_errc {
-      if (bad_) return objpipe_errc::bad;
+      if (moved_away_) return objpipe_errc::bad;
 
       if constexpr(is_invocable_v<Acceptor, state_type&, const objpipe_value_type&>)
         return std::invoke(acceptor_, state_, v);
@@ -672,7 +671,7 @@ class promise_reducer {
     ///\brief Accept a value by lvalue reference.
     auto operator()(objpipe_value_type& v)
     -> objpipe_errc {
-      if (bad_) return objpipe_errc::bad;
+      if (moved_away_) return objpipe_errc::bad;
 
       if constexpr(is_invocable_v<Acceptor, state_type&, objpipe_value_type&>)
         return std::invoke(acceptor_, state_, v);
@@ -686,17 +685,7 @@ class promise_reducer {
     auto push_exception(std::exception_ptr exptr)
     noexcept
     -> void {
-      try {
-        if (!bad_)
-          prom_.set_exception(std::move(exptr));
-        bad_ = true;
-      } catch (const std::future_error& e) {
-        if (e.code() == std::future_errc::promise_already_satisfied) {
-          /* SKIP (swallow exception) */
-        } else { // Only happens if the promise is in a bad state.
-          throw; // aborts, because noexcept, this is intentional
-        }
-      }
+      if (exptr_ == nullptr) exptr_ = std::move(exptr);
     }
 
     ///\brief Destructor, publishes the result of the reduction.
@@ -704,16 +693,20 @@ class promise_reducer {
     ///Unless the promise is already completed, the reduction outcome
     ///is assigned.
     ~single_thread_state() noexcept {
-      if (!bad_) {
-        try {
-          if constexpr(std::is_same_v<void, value_type>) {
-            std::invoke(std::move(extractor_), std::move(state_));
-            prom_.set_value();
-          } else {
-            prom_.set_value(std::invoke(std::move(extractor_), std::move(state_)));
+      if (!moved_away_) {
+        if (exptr_ != nullptr) {
+          try {
+            if constexpr(std::is_same_v<void, value_type>) {
+              std::invoke(std::move(extractor_), std::move(state_));
+              prom_.set_value();
+            } else {
+              prom_.set_value(std::invoke(std::move(extractor_), std::move(state_)));
+            }
+          } catch (...) {
+            push_exception(std::current_exception());
           }
-        } catch (...) {
-          push_exception(std::current_exception());
+        } else if (exptr_ != nullptr) {
+          prom_.set_exception(exptr_);
         }
       }
     }
@@ -721,9 +714,9 @@ class promise_reducer {
    private:
     ///\brief The promise to fulfill at the end of the reduction.
     std::promise<value_type> prom_;
-    ///\brief Indicator that gets set if an exception is pushed.
+    ///\brief Indicator that gets set if the stream is invalidated.
     ///\details Used to quickly abort the reduction if an exception is published.
-    bool bad_ = false;
+    bool moved_away_ = false;
     ///\brief Reduction state.
     ///\details Only a single instance of the reduction state is used.
     state_type state_;
@@ -733,6 +726,8 @@ class promise_reducer {
     ///\brief Extractor functor.
     ///\details Used to retrieve the result of the reduction.
     Extractor extractor_;
+    ///\brief Pending exception.
+    std::exception_ptr exptr_;
   };
 
  public:

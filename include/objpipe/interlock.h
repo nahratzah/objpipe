@@ -32,7 +32,7 @@ using interlock_writer = detail::interlock_writer<T>;
  * with a \ref objpipe::interlock_reader "reader"
  * and a \ref objpipe::interlock_writer "writer",
  * both sharing the same interlocked object pipe.
- * \sa \ref objpipe::detail::interlocked<T>
+ * \sa \ref objpipe::detail::interlock_pipe<T>
  */
 template<typename T>
 auto new_interlock()
