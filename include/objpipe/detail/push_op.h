@@ -60,13 +60,40 @@ class push_adapter_t {
 namespace adapt_async {
 
 
+/**
+ * \brief Asynchronous reduction operation.
+ * \ingroup objpipe_detail
+ * \details
+ * Provides acceptor implementations for a given reduction.
+ *
+ * \tparam ObjpipeVType Value type of the objpipe.
+ * \tparam Init Functor returning a reduction state.
+ * \tparam Acceptor
+ * Functor that accepts values (second argument, by rvalue reference)
+ * and adds them to the reduction state (first argument, by lvalue reference).
+ * \tparam Merger
+ * Functor that merges the reduction state (second argument, by rvalue reference)
+ * into another reduction state (first argument, by lvalue reference).
+ * \tparam Extractor
+ * Functor that extracts the result of a reduction from the reduction state
+ * (passed by rvalue reference).
+ */
 template<typename ObjpipeVType, typename Init, typename Acceptor, typename Merger, typename Extractor>
 class promise_reducer {
  public:
+  ///\brief Value type of the underlying source.
   using objpipe_value_type = ObjpipeVType;
+  ///\brief Type of the reduction state.
   using state_type = std::remove_cv_t<std::remove_reference_t<decltype(std::declval<Init>()())>>;
+  ///\brief Type returned by the reduction.
   using value_type = std::remove_cv_t<std::remove_reference_t<decltype(std::declval<Extractor>()(std::declval<state_type>()))>>;
 
+  ///\brief Constructor.
+  ///\param[in] prom The promise that will receive the result of the reduction.
+  ///\param[in] init Implementation of the Init functor.
+  ///\param[in] acceptor Implementation of the Acceptor functor.
+  ///\param[in] merger Implementation of the Merger functor.
+  ///\param[in] extractor Implementation of the Extractor functor.
   template<typename InitArg, typename AcceptorArg, typename MergerArg, typename ExtractorArg>
   promise_reducer(std::promise<value_type>&& prom, InitArg&& init, AcceptorArg&& acceptor, MergerArg&& merger, ExtractorArg&& extractor)
   : prom_(std::move(prom)),
@@ -543,6 +570,7 @@ class promise_reducer {
   };
 
   ///\brief Single thread reducer state.
+  ///\ingroup objpipe_detail
   ///\details
   ///Accepts values and fills in the associated promise when destroyed.
   ///\note Single thread state is not copy constructible.
@@ -667,6 +695,7 @@ class promise_reducer {
   ///\brief Create a new reducer for
   ///\ref singlethread_push "single threaded push" and
   ///\ref existingthread_push "existing-only single thread push".
+  ///\returns A non-copyable, non-threadsafe acceptor.
   auto new_state(existingthread_push tag)
   -> single_thread_state {
     // Merger is not forwarded, since single threaded reduction does not perform merging of reducer states.
@@ -678,6 +707,8 @@ class promise_reducer {
   }
 
   ///\brief Create a new reducer for \ref multithread_push "ordered, multi threaded push".
+  ///\returns A copyable, threadsafe acceptor.
+  ///The acceptor maintains ordering constraint.
   auto new_state(multithread_push tag)
   -> local_state<ordered_shared_state> {
     return local_state<ordered_shared_state>(
@@ -689,6 +720,8 @@ class promise_reducer {
   }
 
   ///\brief Create a new reducer for \ref multithread_unordered_push "unordered, multi threaded push".
+  ///\returns A copyable, threadsafe acceptor.
+  ///The acceptor does not maintain ordering constraint.
   auto new_state(multithread_unordered_push tag)
   -> local_state<unordered_shared_state> {
     return local_state<unordered_shared_state>(
@@ -726,19 +759,25 @@ class promise_reducer {
 } /* namespace objpipe::detail::adapt_async */
 
 
+///\brief Wrap an reduction acceptor, so that it can accept non-rvalue-reference arguments.
+///\ingroup objpipe_detail
+///\tparam Acceptor The wrapped acceptor.
 template<typename Acceptor>
 struct acceptor_adapter {
  public:
+  ///\brief Constructor.
   explicit acceptor_adapter(Acceptor&& acceptor)
   noexcept(std::is_nothrow_move_constructible_v<Acceptor>)
   : acceptor_(std::move(acceptor))
   {}
 
+  ///\brief Constructor.
   explicit acceptor_adapter(const Acceptor& acceptor)
   noexcept(std::is_nothrow_copy_constructible_v<Acceptor>)
   : acceptor_(acceptor)
   {}
 
+  ///\brief Rvalue acceptor.
   template<typename State, typename T>
   auto operator()(State& s, T&& v) const
   -> std::enable_if_t<std::is_rvalue_reference_v<T&&>, objpipe_errc> {
@@ -748,6 +787,7 @@ struct acceptor_adapter {
       return std::invoke(acceptor_, s, v);
   }
 
+  ///\brief Lvalue acceptor.
   template<typename State, typename T>
   auto operator()(State& s, T& v) const
   -> std::enable_if_t<std::is_lvalue_reference_v<T&>, objpipe_errc> {
@@ -758,27 +798,34 @@ struct acceptor_adapter {
   }
 
  private:
+  ///\brief Wrapped acceptor.
   Acceptor acceptor_;
 };
 
 
-namespace adapt {
-
-
-} /* namespace objpipe::detail::adapt */
-
-
+///\brief Reduction merger that does not do anything.
+///\ingroup objpipe_detail
 struct noop_merger {
   template<typename T>
   void operator()(T& x, T&& y) const {}
 };
 
+///\brief Reduction extractor that does nothing and yields a void result.
+///\ingroup objpipe_detail
 struct void_extractor {
   template<typename T>
   void operator()(T&& v) const {}
 };
 
 
+/**
+ * \brief Objpipe adapter for asynchronous operations.
+ * \ingroup objpipe_detail
+ * \note Constructed by calling adapter_t::async.
+ *
+ * \tparam Source Objpipe source type.
+ * \tparam PushTag Push policy for the adapter.
+ */
 template<typename Source, typename PushTag>
 class async_adapter_t {
  public:
@@ -791,8 +838,24 @@ class async_adapter_t {
     push_tag_(std::move(push_tag))
   {}
 
-  ///\brief Reduce operation.
-  ///\note \p init is a functor.
+  /**
+   * \brief Perform a reduction.
+   * \details
+   * The reduction is described by the four arguments to this function,
+   * and performed according to the PushTag passed by adapter_t::async.
+   *
+   * Invokes \ref adapt::ioc_push ioc_push() to schedule the reduction.
+   * If the Source does not support ioc_push(), a future will instead be created,
+   * using std::async.
+   *
+   * If the PushTag is existingthread_push and the source does not implement
+   * this policy, the returned future will be a lazy future.
+   * Otherwise, it will be an async future.
+   *
+   * \note \p init is a functor.
+   * \sa adapt_async::promise_reducer
+   * \returns A future for the result of the reduction.
+   */
   template<typename Init, typename Acceptor, typename Merger, typename Extractor>
   auto reduce(Init&& init, Acceptor&& acceptor, [[maybe_unused]] Merger&& merger, Extractor&& extractor)
   -> std::future<std::remove_cv_t<std::remove_reference_t<decltype(std::declval<Extractor&>()(std::declval<Init>()()))>>> {
@@ -871,6 +934,10 @@ class async_adapter_t {
         [](result_type&& v) -> result_type&& { return std::move(v); });
   }
 
+  ///\brief Asynchronously create a vector.
+  ///\details This is implemented in terms of a reduction.
+  ///Multithread reductions may perform poorly, as the merge stage
+  ///of each reduction needs to move the contents of the vector.
   template<typename Alloc = std::allocator<adapt::value_type<Source>>>
   auto to_vector(Alloc alloc = Alloc()) &&
   -> std::future<std::vector<value_type, Alloc>> {
@@ -890,6 +957,18 @@ class async_adapter_t {
         });
   }
 
+  /**
+   * \brief Copy the elements in the objpipe into the output iterator.
+   * \note This function is not available in
+   * \ref multithread_push "multithreaded policy"
+   * (but *is* available in the
+   * \ref multithread_unordered_push "unordered, multithreaded policy").
+   *
+   * \note If the policy is multithreaded, the output iterator shall be thread safe.
+   * \param[out] out An output iterator to which to emit values.
+   * \param[out] out An output iterator to which to emit values.
+   * \returns A void-future that completes once all source elements have been copied.
+   */
   template<typename OutputIterator,
       bool Enable = !std::is_base_of_v<multithread_push, PushTag> || std::is_base_of_v<multithread_unordered_push, PushTag>>
   auto copy(OutputIterator&& out) &&
@@ -904,6 +983,17 @@ class async_adapter_t {
         void_extractor());
   }
 
+  /**
+   * \brief Invoke a functor on each of the elements in the objpipe.
+   * \note This function is not available in
+   * \ref multithread_push "multithreaded policy"
+   * (but *is* available in the
+   * \ref multithread_unordered_push "unordered, multithreaded policy").
+   *
+   * \note If the policy is multithreaded, the functor shall be thread safe.
+   * \param[in] fn A functor to invoke for each value.
+   * \returns A void-future that becomes ready when the functor completes.
+   */
   template<typename Fn,
       bool Enable = !std::is_base_of_v<multithread_push, PushTag> || std::is_base_of_v<multithread_unordered_push, PushTag>>
   auto for_each(Fn&& fn) &&
@@ -918,6 +1008,10 @@ class async_adapter_t {
         void_extractor());
   }
 
+  /**
+   * \brief Count the elements in the objpipe.
+   * \returns A future holding the number of elements in the objpipe.
+   */
   auto count() &&
   -> std::future<std::uintmax_t> {
     return reduce(
@@ -936,6 +1030,13 @@ class async_adapter_t {
         [](std::uintmax_t&& c) -> std::uintmax_t { return c; });
   }
 
+  /**
+   * \brief Retrieve the minimum element in the objpipe.
+   * \details
+   * If multiple elements compare the same, the first element is returned.
+   * \note If the policy is unordered, it is undefined which of multiple minima is returned.
+   * \returns The minimum value of elements in the objpipe.
+   */
   template<typename Pred = std::less<value_type>>
   auto min(Pred pred = Pred())
   -> std::future<std::optional<value_type>> {
@@ -953,6 +1054,13 @@ class async_adapter_t {
         [](std::optional<value_type>&& c) -> std::optional<value_type>&& { return std::move(c); });
   }
 
+  /**
+   * \brief Retrieve the maximum element in the objpipe.
+   * \details
+   * If multiple elements compare the same, the first element is returned.
+   * \note If the policy is unordered, it is undefined which of multiple maxima is returned.
+   * \returns The maximum value of elements in the objpipe.
+   */
   template<typename Pred = std::less<value_type>>
   auto max(Pred pred = Pred())
   -> std::future<std::optional<value_type>> {
@@ -971,7 +1079,9 @@ class async_adapter_t {
   }
 
  private:
+  ///\brief Source implementation.
   Source src_;
+  ///\brief Push policy.
   PushTag push_tag_;
 };
 
