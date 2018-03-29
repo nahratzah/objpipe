@@ -15,19 +15,47 @@
 namespace objpipe::detail {
 
 
+/**
+ * \brief Acceptor interface for interlock.
+ * \details Interlock needs an interface, in order to make the acceptor
+ * available to its \ref interlock_writer "writers".
+ *
+ * \tparam T The type argument to interlock.
+ */
 template<typename T>
 class interlock_acceptor_intf {
  public:
+  ///\brief Value type of the interlock.
   using value_type = std::remove_cv_t<std::remove_reference_t<T>>;
 
+  /** \brief Destructor. */
   virtual ~interlock_acceptor_intf() noexcept {}
 
+  /**
+   * \brief Publish method.
+   * \details Used by \ref interlock_writer "writers" to publish values.
+   */
   virtual auto publish(std::conditional_t<std::is_const_v<T>,
       std::add_lvalue_reference_t<std::add_const_t<value_type>>,
       std::add_rvalue_reference_t<value_type>> v)
   noexcept
   -> std::variant<objpipe_errc, interlock_acceptor_intf*> = 0;
 
+  /**
+   * \brief Publish method for const values.
+   * \details This method only exists if the interlock is for non-const values,
+   * and functions by publishing a copy the underlying value.
+   *
+   * The publish method does not return until the receiving side has consumed
+   * the value.
+   * \param[in] v A value to publish.
+   * \returns An objpipe_errc indicating success or failure.
+   * If the caller should replace its acceptor and the value was successfully published,
+   * the variant will hold the second type, which is a pointer to the replacement interface.
+   * (The replacement interface should have its select_on_writer_copy() method called.
+   * It's safe to ignore the pointer, but performance will be less,
+   * as future invocations of push will have to forward to this each time.)
+   */
   template<bool Enable = !std::is_const_v<T>>
   auto publish(std::add_lvalue_reference_t<std::add_const_t<value_type>> v)
   noexcept
@@ -35,11 +63,30 @@ class interlock_acceptor_intf {
     return publish(T(v));
   }
 
+  /**
+   * \brief Publish an exception.
+   * \details Makes the exception available to the pipe or acceptor.
+   */
   virtual auto publish_exception(std::exception_ptr exptr) noexcept -> objpipe_errc = 0;
 
+  /**
+   * \brief Increment writer reference counter.
+   */
   virtual auto inc_writer() noexcept -> void = 0;
+  /**
+   * \brief Decrement writer reference counter.
+   * \returns True if the acceptor is to be deleted.
+   */
   virtual auto subtract_writer() noexcept -> bool = 0;
 
+  /**
+   * \brief Selects an acceptor interface and increments its writer.
+   * \details The default implementation shares itself with all writers.
+   * A specialization of this method can return a newly allocated copy instead.
+   * \returns An acceptor that has had its writer count incremented.
+   *
+   * \bug Should return a std::unique_ptr, instead of a raw pointer.
+   */
   virtual auto select_on_writer_copy() -> interlock_acceptor_intf* {
     inc_writer();
     return this;
@@ -47,25 +94,40 @@ class interlock_acceptor_intf {
 };
 
 
+/**
+ * \brief Implementation of interlock_acceptor_impl, where the wrapped acceptor is shared across multiple threads.
+ * \details Since the acceptor is shared, this acceptor must implement synchronization.
+ */
 template<typename T, typename Acceptor>
 class interlock_acceptor_impl_shared final
 : public interlock_acceptor_intf<T>
 {
  public:
+  ///\brief Value type of the interlock.
   using value_type = typename interlock_acceptor_intf<T>::value_type;
 
+  /**
+   * \brief Constructor, wrapping an acceptor.
+   * \param[in] acceptor The acceptor to wrap.
+   */
   explicit interlock_acceptor_impl_shared(Acceptor&& acceptor)
   noexcept(std::is_nothrow_move_constructible_v<Acceptor>)
   : acceptor_(std::move(acceptor))
   {}
 
+  /**
+   * \brief Constructor, wrapping an acceptor.
+   * \param[in] acceptor The acceptor to wrap.
+   */
   explicit interlock_acceptor_impl_shared(const Acceptor& acceptor)
   noexcept(std::is_nothrow_copy_constructible_v<Acceptor>)
   : acceptor_(std::move(acceptor))
   {}
 
+  ///\brief Destructor.
   ~interlock_acceptor_impl_shared() noexcept override {}
 
+  ///\brief Push a value into the acceptor.
   auto publish(std::conditional_t<std::is_const_v<T>,
       std::add_lvalue_reference_t<std::add_const_t<value_type>>,
       std::add_rvalue_reference_t<value_type>> v)
@@ -84,6 +146,7 @@ class interlock_acceptor_impl_shared final
     }
   }
 
+  ///\brief Push an exception into the acceptor.
   auto publish_exception(std::exception_ptr exptr)
   noexcept
   -> objpipe_errc override {
@@ -93,12 +156,14 @@ class interlock_acceptor_impl_shared final
     return objpipe_errc::success;
   }
 
+  ///\copydoc interlock_acceptor_intf::inc_writer
   auto inc_writer()
   noexcept
   -> void override {
     writer_count_.fetch_add(1u, std::memory_order_acquire);
   }
 
+  ///\copydoc interlock_acceptor_intf::subtract_writer
   auto subtract_writer()
   noexcept
   -> bool override {
@@ -106,36 +171,56 @@ class interlock_acceptor_impl_shared final
   }
 
  private:
+  ///\brief Mutex, to serialize access to acceptor_.
   std::mutex mtx_;
+  ///\brief Acceptor that is to receive values.
   Acceptor acceptor_;
+  ///\brief Number of writers referencing this.
   std::atomic<std::uintptr_t> writer_count_ = 0;
 };
 
 
+///\brief Acceptor wrapper for unordered traversal of interlock.
+///\details In the unordered case, we can use copies of the acceptor,
+///instead of synchronizing shared access via a mutex.
 template<typename T, typename Acceptor>
 class interlock_acceptor_impl_unordered final
 : public interlock_acceptor_intf<T>
 {
  public:
+  ///\brief Value type of the interlock.
   using value_type = typename interlock_acceptor_intf<T>::value_type;
 
+  /**
+   * \brief Constructor, wrapping an acceptor.
+   * \param[in] acceptor The acceptor to wrap.
+   */
   explicit interlock_acceptor_impl_unordered(Acceptor&& acceptor)
   noexcept(std::is_nothrow_move_constructible_v<Acceptor>)
   : acceptor_(std::move(acceptor))
   {}
 
+  /**
+   * \brief Constructor, wrapping an acceptor.
+   * \param[in] acceptor The acceptor to wrap.
+   */
   explicit interlock_acceptor_impl_unordered(const Acceptor& acceptor)
   noexcept(std::is_nothrow_copy_constructible_v<Acceptor>)
   : acceptor_(std::move(acceptor))
   {}
 
+  ///\brief Copy constructor.
+  ///\details Copies the wrapped acceptor.
   interlock_acceptor_impl_unordered(const interlock_acceptor_impl_unordered& rhs)
   noexcept(std::is_nothrow_copy_constructible_v<Acceptor>)
   : acceptor_(rhs.acceptor_)
   {}
 
+  ///\brief Destructor.
   ~interlock_acceptor_impl_unordered() noexcept override {}
 
+  ///\brief Push a value into the acceptor.
+  ///\note This method is not thread safe.
   auto publish(std::conditional_t<std::is_const_v<T>,
       std::add_lvalue_reference_t<std::add_const_t<value_type>>,
       std::add_rvalue_reference_t<value_type>> v)
@@ -152,6 +237,8 @@ class interlock_acceptor_impl_unordered final
     }
   }
 
+  ///\brief Push an exception into the acceptor.
+  ///\note This method is not thread safe.
   auto publish_exception(std::exception_ptr exptr)
   noexcept
   -> objpipe_errc override {
@@ -159,18 +246,21 @@ class interlock_acceptor_impl_unordered final
     return objpipe_errc::success;
   }
 
+  ///\copydoc interlock_acceptor_intf::inc_writer
   auto inc_writer()
   noexcept
   -> void override {
     writer_count_.fetch_add(1u, std::memory_order_acquire);
   }
 
+  ///\copydoc interlock_acceptor_intf::subtract_writer
   auto subtract_writer()
   noexcept
   -> bool override {
     return writer_count_.fetch_sub(1u, std::memory_order_release) == 1u;
   }
 
+  ///\brief Create a copy of this acceptor.
   auto select_on_writer_copy() -> interlock_acceptor_impl_unordered* override {
     // Don't invoke parent, since default impl is for sharing.
     interlock_acceptor_impl_unordered* copy = new interlock_acceptor_impl_unordered(*this);
@@ -179,25 +269,38 @@ class interlock_acceptor_impl_unordered final
   }
 
  private:
+  ///\brief Wrapped acceptor.
   Acceptor acceptor_;
+  ///\brief Reference counter.
   std::atomic<std::uintptr_t> writer_count_ = 0;
 };
 
 
+/**
+ * \brief Implementation of interlock shared data structure.
+ * \details
+ * This data structure is used to communicate between
+ * the \ref interlock_writer "interlock writers"
+ * and the \ref interlock_reader "interlock readers".
+ */
 template<typename T>
 class interlock_impl final
 : public interlock_acceptor_intf<T>
 {
  public:
+  ///\brief Value type of the interlock.
   using value_type = typename interlock_acceptor_intf<T>::value_type;
 
  private:
+  ///\brief Type that is returned by the ``front()`` method of the interlock source.
   using front_type = std::conditional_t<std::is_const_v<T>,
         std::add_lvalue_reference_t<T>,
         std::add_rvalue_reference_t<T>>;
+  ///\brief Type that is returned by the ``pull()`` method of the interlock source.
   using pull_type = value_type;
 
  public:
+  ///\brief Destructor.
   ~interlock_impl() noexcept override {
     if (acceptor_ != nullptr && acceptor_->subtract_writer())
       delete acceptor_;
@@ -345,6 +448,8 @@ class interlock_impl final
     assert(exptr != nullptr);
 
     std::unique_lock<std::mutex> lck_{ guard_ };
+    if (acceptor_ != nullptr)
+      return acceptor_->push_exception(std::move(exptr));
     if (reader_count_ == 0) return objpipe_errc::closed;
     if (exptr_ != nullptr) return objpipe_errc::bad;
     exptr_ = std::move(exptr);
