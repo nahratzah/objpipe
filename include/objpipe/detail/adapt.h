@@ -537,6 +537,15 @@ template<typename Source, typename PushTag>
 constexpr bool has_ioc_push = has_ioc_push_<Source, PushTag>::value;
 
 
+/**
+ * \brief Inversion of control for a given source.
+ * \details Invokes the push implementation of the given source.
+ *
+ * This function only exists if the source can handle pushes of the given type.
+ * \param[in] src The source on which the push implementation is to be run.
+ * \param[in] push_tag A policy specifying the push strategy.
+ * \param[in] acceptor An object that will accept pushed objects.
+ */
 template<typename Source, typename Acceptor>
 auto ioc_push(Source&& src, existingthread_push push_tag, Acceptor&& acceptor)
 -> std::enable_if_t<has_ioc_push<std::decay_t<Source>, existingthread_push>> {
@@ -551,6 +560,15 @@ auto ioc_push(Source&& src, existingthread_push push_tag, Acceptor&& acceptor)
       std::forward<Acceptor>(acceptor));
 }
 
+/**
+ * \brief Inversion of control for a given source.
+ * \details Invokes the push implementation of the given source.
+ *
+ * This function only exists if the source can handle pushes of the given type.
+ * \param[in] src The source on which the push implementation is to be run.
+ * \param[in] push_tag A policy specifying the push strategy.
+ * \param[in] acceptor An object that will accept pushed objects.
+ */
 template<typename Source, typename Acceptor>
 auto ioc_push(Source&& src, singlethread_push push_tag, Acceptor&& acceptor)
 -> std::enable_if_t<has_ioc_push<std::decay_t<Source>, singlethread_push>> {
@@ -565,6 +583,15 @@ auto ioc_push(Source&& src, singlethread_push push_tag, Acceptor&& acceptor)
       std::forward<Acceptor>(acceptor));
 }
 
+/**
+ * \brief Inversion of control for a given source.
+ * \details Invokes the push implementation of the given source.
+ *
+ * This function only exists if the source can handle pushes of the given type.
+ * \param[in] src The source on which the push implementation is to be run.
+ * \param[in] push_tag A policy specifying the push strategy.
+ * \param[in] acceptor An object that will accept pushed objects.
+ */
 template<typename Source, typename Acceptor>
 auto ioc_push(Source&& src, multithread_push push_tag, Acceptor&& acceptor)
 -> std::enable_if_t<has_ioc_push<std::decay_t<Source>, multithread_push>> {
@@ -581,6 +608,15 @@ auto ioc_push(Source&& src, multithread_push push_tag, Acceptor&& acceptor)
       std::forward<Acceptor>(acceptor));
 }
 
+/**
+ * \brief Inversion of control for a given source.
+ * \details Invokes the push implementation of the given source.
+ *
+ * This function only exists if the source can handle pushes of the given type.
+ * \param[in] src The source on which the push implementation is to be run.
+ * \param[in] push_tag A policy specifying the push strategy.
+ * \param[in] acceptor An object that will accept pushed objects.
+ */
 template<typename Source, typename Acceptor>
 auto ioc_push(Source&& src, multithread_unordered_push push_tag, Acceptor&& acceptor)
 -> std::enable_if_t<has_ioc_push<std::decay_t<Source>, multithread_unordered_push>> {
@@ -597,6 +633,15 @@ auto ioc_push(Source&& src, multithread_unordered_push push_tag, Acceptor&& acce
       std::forward<Acceptor>(acceptor));
 }
 
+/**
+ * \brief Inversion of control for a given source.
+ * \details Invokes the push implementation of the given source.
+ *
+ * This function only exists if the source can handle pushes of the given type.
+ * \param[in] src The source on which the push implementation is to be run.
+ * \param[in] push_tag A policy specifying the push strategy.
+ * \param[in] acceptor An object that will accept pushed objects.
+ */
 template<typename Source, typename Acceptor>
 auto ioc_push(Source&& src, [[maybe_unused]] singlethread_push push_tag, Acceptor&& acceptor)
 -> std::enable_if_t<!has_ioc_push<std::decay_t<Source>, singlethread_push>> {
@@ -639,6 +684,15 @@ auto ioc_push(Source&& src, [[maybe_unused]] singlethread_push push_tag, Accepto
       );
 }
 
+/**
+ * \brief Inversion of control for a given source.
+ * \details Invokes the push implementation of the given source.
+ *
+ * This function only exists if the source can handle pushes of the given type.
+ * \param[in] src The source on which the push implementation is to be run.
+ * \param[in] push_tag A policy specifying the push strategy.
+ * \param[in] acceptor An object that will accept pushed objects.
+ */
 template<typename Source, typename Acceptor>
 auto ioc_push(Source&& src, [[maybe_unused]] existingthread_push push_tag, Acceptor&& acceptor)
 -> std::enable_if_t<!has_ioc_push<std::decay_t<Source>, existingthread_push>> {
