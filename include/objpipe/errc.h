@@ -121,23 +121,33 @@ inline std::ostream& operator<<(std::ostream& out, objpipe_errc e) {
 
 /**
  * \brief Objpipe exception class.
+ * \ingroup objpipe_errors
  */
 class objpipe_error
 : public std::system_error
 {
  public:
+  ///\brief Constructor.
+  ///\param[in] e The error code of the exception.
   objpipe_error(objpipe_errc e)
   : std::system_error(static_cast<int>(e), objpipe_category())
   {}
 
+  ///\brief Constructor.
+  ///\param[in] e The error code of the exception.
+  ///\param[in] what_arg A text describing what went wrong.
   objpipe_error(objpipe_errc e, const std::string& what_arg)
   : std::system_error(static_cast<int>(e), objpipe_category(), what_arg)
   {}
 
+  ///\brief Constructor.
+  ///\param[in] e The error code of the exception.
+  ///\param[in] what_arg A text describing what went wrong.
   objpipe_error(objpipe_errc e, const char* what_arg)
   : std::system_error(static_cast<int>(e), objpipe_category(), what_arg)
   {}
 
+  ///\brief Destructor.
   ~objpipe_error() override {};
 };
 
