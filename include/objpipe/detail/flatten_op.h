@@ -19,13 +19,25 @@ using std::make_move_iterator;
 using std::begin;
 using std::end;
 
+///\brief Invoke begin(collection), using ADL.
+///\ingroup objpipe_detail
+///\relates objpipe::detail::flatten_op
+///\relates objpipe::detail::flatten_push
 template<typename Collection, typename = std::void_t<decltype(begin(std::declval<Collection&>()))>>
 constexpr auto flatten_op_begin_(Collection& c)
 noexcept(noexcept(begin(std::declval<Collection&>())))
--> decltype(begin(c)) {
+-> std::enable_if_t<
+    std::is_base_of_v<
+        std::input_iterator_tag,
+        typename std::iterator_traits<decltype(begin(c))>::iterator_category>,
+    decltype(begin(c))> {
   return begin(c); // ADL, with fallback to std::begin
 }
 
+///\brief Invoke end(collection), using ADL.
+///\ingroup objpipe_detail
+///\relates objpipe::detail::flatten_op
+///\relates objpipe::detail::flatten_push
 template<typename Collection, typename = std::void_t<decltype(end(std::declval<Collection&>()))>>
 constexpr auto flatten_op_end_(Collection& c)
 noexcept(noexcept(end(std::declval<Collection&>())))
@@ -33,11 +45,19 @@ noexcept(noexcept(end(std::declval<Collection&>())))
   return end(c); // ADL, with fallback to std::end
 }
 
+///\brief Trait that tests if the elements in Source can be iterated over.
+///\ingroup objpipe_detail
+///\details Default case is that it can not be iterated over.
+///\tparam An objpipe source.
 template<typename Source, typename = void>
 struct can_flatten_
 : std::false_type
 {};
 
+///\brief Trait that tests if the elements in Source can be iterated over.
+///\ingroup objpipe_detail
+///\details Specialization for the case where it can be iterated over.
+///\tparam An objpipe source.
 template<typename Source>
 struct can_flatten_<Source,
     std::void_t<decltype(flatten_op_begin_(std::declval<adapt::value_type<Source>&>())),
@@ -45,6 +65,12 @@ struct can_flatten_<Source,
 : std::true_type
 {};
 
+///\brief Trait, that tests if the elements in Source can be iterated over.
+///\ingroup objpipe_detail
+///\details
+///An object can be iterated over, if begin(Element) and end(Element) are invocable, when located via ADL.
+///And the type returned by begin(Element) has an iterator category of at least input_iterator_tag.
+///\tparam An objpipe source.
 template<typename Source>
 constexpr bool can_flatten = can_flatten_<Source>::value;
 
@@ -295,6 +321,8 @@ class flatten_op_store_rref_ {
   end_iterator end_;
 };
 
+///\brief Select the store implementation for pull-based flatten_op.
+///\ingroup objpipe_detail
 template<typename Collection>
 using flatten_op_store = std::conditional_t<
     std::is_volatile_v<Collection> || !std::is_reference_v<Collection>,
