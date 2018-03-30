@@ -11,6 +11,18 @@
 \attention Mandatory.
 
 A source is sequentially traversable, using front(), pop_front(), pull() and try_pull().
+
+Minimum viable implementation:
+\code
+template<typename ValueType>
+class SourceConcept {
+ public:
+  bool is_pullable() noexcept;
+  objpipe::objpipe_errc wait();
+  objpipe::detail::transport<ValueType> front();
+  objpipe::objpipe_errc pop_front();
+};
+\endcode
  */
 
 /**
@@ -80,6 +92,11 @@ Any other return value indicates the objpipe is in an error state.
 \attention Mandatory.
 
 Tests if the source either has pending data, or has an external source of acquiring more data.
+
+May not throw exceptions.
+
+\note The result may be a false positive (but shall never be a false negative).
+
 \deprecated This member is not used by anyone and not all that useful after all.
 \bug Comb the source and remove it.
  */
