@@ -92,6 +92,7 @@ class filter_push {
 
 /**
  * \brief Filter operation.
+ * \implements TransformationConcept
  * \ingroup objpipe_detail
  *
  * \details

@@ -1,0 +1,9 @@
+/**
+\interface TransformationConcept
+\extends SourceConcept
+\ingroup objpipe_concepts
+\brief A transformation on a \ref SourceConcept "source".
+\details
+A transformation is a \ref SourceConcept "source", implemented in
+terms of another \ref SourceConcept "source".
+ */

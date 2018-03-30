@@ -36,6 +36,7 @@ namespace objpipe::detail {
 ///\brief Wrap a source inside an adapter.
 ///\ingroup objpipe_detail
 ///\relates adapter_t
+///\tparam Source A type implementing \ref SourceConcept "Source Concept".
 template<typename Source>
 constexpr auto adapter(Source&& src)
 noexcept(std::is_nothrow_constructible_v<adapter_t<std::decay_t<Source>>, Source>)
@@ -50,6 +51,8 @@ noexcept(std::is_nothrow_constructible_v<adapter_t<std::decay_t<Source>>, Source
  *
  * \details
  * An input iterator, iterating over the elements of the given objpipe.
+ *
+ * \tparam Source A type implementing \ref SourceConcept "Source Concept".
  */
 template<typename Source>
 class adapter_iterator {
@@ -115,6 +118,8 @@ class adapter_iterator {
  * It also applies transformations and handles various algorithms.
  *
  * \tparam Source The source that is to be wrapped.
+ * Must be an implementation of \ref SourceConcept "Source Concept".
+ *
  * \sa \ref objpipe::reader
  *
  * \bug

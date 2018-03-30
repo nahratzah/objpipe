@@ -1,6 +1,9 @@
 #ifndef OBJPIPE_DETAIL_EMPTY_PIPE_H
 #define OBJPIPE_DETAIL_EMPTY_PIPE_H
 
+///\file
+///\ingroup objpipe_detail
+
 #include <objpipe/errc.h>
 #include <objpipe/push_policies.h>
 #include <objpipe/detail/transport.h>
@@ -8,6 +11,16 @@
 namespace objpipe::detail {
 
 
+/**
+ * \brief Empty objpipe.
+ * \implements SourceConcept
+ * \ingroup objpipe_detail
+ *
+ * \details
+ * An empty objpipe of type T.
+ *
+ * \tparam T The type of elements in the objpipe.
+ */
 template<typename T>
 class empty_pipe {
  public:

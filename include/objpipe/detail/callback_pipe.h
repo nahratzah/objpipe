@@ -90,6 +90,7 @@ class callback_fn_wrapper {
 
 /**
  * \brief Extract values from fn, which emits them via a callback.
+ * \implements SourceConcept
  * \ingroup objpipe_detail
  *
  * \details

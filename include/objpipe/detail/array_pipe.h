@@ -21,8 +21,9 @@
 namespace objpipe::detail {
 
 
-/*
+/**
  * \brief Iterate over a copied sequence of elements.
+ * \implements SourceConcept
  * \ingroup objpipe_detail
  *
  * \details
