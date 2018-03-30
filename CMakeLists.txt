@@ -81,5 +81,5 @@ find_package(Doxygen REQUIRED mscgen OPTIONAL_COMPONENTS dot)
 
 if(DOXYGEN_FOUND)
   set(DOXYGEN_USE_MDFILE_AS_MAINPAGE "README.md")
-  doxygen_add_docs(objpipe-doc ${DOXYGEN_USE_MDFILE_AS_MAINPAGE} include)
+  doxygen_add_docs(objpipe-doc ${DOXYGEN_USE_MDFILE_AS_MAINPAGE} include doxygen)
 endif()
