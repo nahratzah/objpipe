@@ -12,17 +12,34 @@
 
 A source is sequentially traversable, using front(), pop_front(), pull() and try_pull().
 
+A source must be [Move Constructible](http://en.cppreference.com/w/cpp/concept/MoveConstructible).
+
+\note
+A source does not have to be
+[Default Constructible](http://en.cppreference.com/w/cpp/concept/DefaultConstructible),
+[Copy Constructible](http://en.cppreference.com/w/cpp/concept/CopyConstructible),
+[Move Assignable](http://en.cppreference.com/w/cpp/concept/MoveAssignable),
+[Copy Assignable](http://en.cppreference.com/w/cpp/concept/CopyAssignable),
+nor [Swappable](http://en.cppreference.com/w/cpp/concept/Swappable).
+It is discouraged to enable these traits, unless there is a good reason to.
+
 Minimum viable implementation:
 \code
 template<typename ValueType>
 class SourceConcept {
  public:
+  SourceConcept(SourceConcept&&);
+
   bool is_pullable() noexcept;
   objpipe::objpipe_errc wait();
   objpipe::detail::transport<ValueType> front();
   objpipe::objpipe_errc pop_front();
 };
 \endcode
+
+Sources are not accessed directly by users of the library.
+Only by implementors of a \ref TransformationConcept "transformation".
+Instead, sources are wrapped inside an \ref objpipe::detail::adapter_t "adapter".
  */
 
 /**
