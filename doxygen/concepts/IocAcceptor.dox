@@ -1,0 +1,50 @@
+/**
+\interface IocAcceptorConcept
+\ingroup objpipe_concepts
+\brief Models the acceptors used by the IOC Push Interface.
+\details
+An ioc-acceptor accepts values and/or exceptions.
+
+An ioc-acceptor must be [Move Constructible](http://en.cppreference.com/w/cpp/concept/MoveConstructible).
+
+If an ioc-acceptor is used in a multithreaded context, it shall also be
+[Copy Constructible](http://en.cppreference.com/w/cpp/concept/CopyConstructible)
+and
+[Swappable](http://en.cppreference.com/w/cpp/concept/Swappable).
+ */
+
+/**
+\typedef ValueType
+\memberof IocAcceptorConcept
+\brief Each source shall have a value type.
+\details
+\attention Conceptual Only.
+
+This is a conceptual value type.
+No real type def is required to meet this.
+
+\note Corresponds to the ValueType in a \ref SourceConcept "source".
+ */
+
+/**
+\fn objpipe_errc operator()(ValueType value)
+\memberof IocAcceptorConcept
+\brief Method that accepts values.
+\details
+Acceptors must accept values.
+
+Values may be provided by const reference, or rvalue reference.
+
+\returns And objpipe_errc indicating the state of the acceptor, after pushing.
+\bug Should return a bool instead of an objpipe_errc.
+ */
+
+/**
+\fn Unspecified push_exception(std::exception_ptr exptr) noexcept
+\memberof IocAcceptorConcept
+\brief Method that accepts exceptions.
+\details
+Acceptors must accept an exception.
+
+\returns Void, or if it returns anything other than void, the result is discarded.
+ */

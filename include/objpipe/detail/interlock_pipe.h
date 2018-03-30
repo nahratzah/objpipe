@@ -708,6 +708,7 @@ class interlock_pipe {
 
 /**
  * \brief Writer for the interlock.
+ * \implements IocAcceptorConcept
  * \ingroup objpipe_detail
  *
  * \details
