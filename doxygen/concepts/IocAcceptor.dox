@@ -11,6 +11,33 @@ If an ioc-acceptor is used in a multithreaded context, it shall also be
 [Copy Constructible](http://en.cppreference.com/w/cpp/concept/CopyConstructible)
 and
 [Swappable](http://en.cppreference.com/w/cpp/concept/Swappable).
+
+Minimum viable implementation for unthreaded context:
+\code
+template<typename ValueType>
+class UnthreadedIocAcceptor {
+ public:
+  UnthreadedIocAcceptor(UnthreadedIocAcceptor&& other);
+
+  objpipe::objpipe_errc operator()(ValueType v);
+  void push_exception(std::exception_ptr exptr);
+};
+\endcode
+
+Minimum viable implementation for threaded context:
+\code
+template<typename ValueType>
+class ThreadedIocAcceptor {
+ public:
+  ThreadedIocAcceptor(ThreadedIocAcceptor&& other);
+  ThreadedIocAcceptor(const ThreadedIocAcceptor& other);
+
+  friend void swap(ThreadedIocAcceptor& x, ThreadedIocAcceptor& y);
+
+  objpipe::objpipe_errc operator()(ValueType v);
+  void push_exception(std::exception_ptr exptr);
+};
+\endcode
  */
 
 /**
@@ -34,6 +61,7 @@ No real type def is required to meet this.
 Acceptors must accept values.
 
 Values may be provided by const reference, or rvalue reference.
+You may get better performance if implementing it as taking arguments by reference instead.
 
 \returns And objpipe_errc indicating the state of the acceptor, after pushing.
 \bug Should return a bool instead of an objpipe_errc.
