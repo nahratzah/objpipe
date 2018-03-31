@@ -11,6 +11,7 @@
 #include <variant>
 #include <objpipe/errc.h>
 #include <objpipe/detail/transport.h>
+#include <objpipe/detail/adapt.h>
 
 namespace objpipe::detail {
 
@@ -796,7 +797,7 @@ class interlock_writer {
 
   template<typename Arg>
   auto operator()(Arg&& arg)
-  -> void {
+  -> objpipe_errc {
     assert(ptr_ != nullptr);
     objpipe_errc e = objpipe_errc::success;
     std::visit(
@@ -809,25 +810,7 @@ class interlock_writer {
           }
         },
         ptr_->publish(std::forward<Arg>(arg)));
-    if (e != objpipe_errc::success)
-      throw objpipe_error(e);
-  }
-
-  template<typename Arg>
-  auto operator()(Arg&& arg, objpipe_errc& e)
-  -> void {
-    assert(ptr_ != nullptr);
-    e = objpipe_errc::success;
-    std::visit(
-        [&e, this](auto publish_result) noexcept {
-          if constexpr(std::is_same_v<objpipe_errc, decltype(publish_result)>) {
-            e = publish_result;
-          } else {
-            auto old_ptr = std::exchange(ptr_, publish_result->select_on_writer_copy());
-            if (old_ptr->subtract_writer()) delete old_ptr;
-          }
-        },
-        ptr_->publish(std::forward<Arg>(arg)));
+    return e;
   }
 
   auto push_exception(std::exception_ptr exptr)
