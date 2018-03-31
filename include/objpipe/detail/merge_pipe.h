@@ -16,10 +16,21 @@
 namespace objpipe::detail {
 
 
+/**
+ * \brief Collection type used to merge batches of elements together.
+ * \ingroup objpipe_detail
+ * \relates merge_concat_push
+ *
+ * \details
+ * We use a list, for its splice operation.
+ *
+ * \tparam T The value type of the merge objpipe.
+ */
 template<typename T>
 using merge_batch_type = std::list<T>;
 
 ///\brief Converts a batched stream of elements into its components.
+///\ingroup objpipe_detail
 template<typename T, typename Sink, bool Multithreaded>
 class merge_concat_push {
  public:
@@ -853,6 +864,27 @@ class merge_pipe_base {
   Less less_;
 };
 
+/**
+ * \brief Merges multiple \ref SourceConcept sources together using a less comparison.
+ * \implements SourceConcept
+ * \implements IocPushConcept
+ * \ingroup objpipe_detail
+ *
+ * \details
+ * Used to combine zero or more ordered sources, maintaining ordering.
+ * \note This operation is not stable.
+ * \bug This operation should be made stable.
+ *
+ * \tparam Source
+ * The wrapped source type.
+ * Must implement the \ref SourceConcept "source concept".
+ * The source shall have elements ordered according to the \p Less comparator.
+ * \tparam Less
+ * A less comparator.
+ * Each time an element is requested, the least front element in all sources is selected.
+ *
+ * \sa \ref merge_reduce_pipe
+ */
 template<typename Source, typename Less>
 class merge_pipe
 : private merge_pipe_base<Source, Less>
@@ -989,6 +1021,30 @@ class merge_pipe
 
 template<typename Type, typename ReduceOp> class do_merge_t;
 
+/**
+ * \brief Merges multiple \ref SourceConcept sources together using a less comparison, combining those that are equal.
+ * \implements SourceConcept
+ * \implements IocPushConcept
+ * \ingroup objpipe_detail
+ *
+ * \details
+ * Used to combine zero or more ordered sources, maintaining ordering.
+ *
+ * Adjecent duplicates are reduced according to the \p ReduceOp, prior to being emitted.
+ *
+ * \note This operation is not stable.
+ * \bug This operation should be made stable.
+ *
+ * \tparam Source
+ * The wrapped source type.
+ * Must implement the \ref SourceConcept "source concept".
+ * The source shall have elements ordered according to the \p Less comparator.
+ * \tparam Less
+ * A less comparator.
+ * Each time an element is requested, the least front element in all sources is selected.
+ *
+ * \sa \ref merge_pipe
+ */
 template<typename Source, typename Less, typename ReduceOp>
 class merge_reduce_pipe
 : private merge_pipe_base<Source, Less>

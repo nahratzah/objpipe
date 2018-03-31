@@ -471,6 +471,7 @@ class promise_reducer {
   };
 
   ///\brief Reducer state for multithread push.
+  ///\implements IocAcceptorConcept
   ///\ingroup objpipe_detail
   ///\details
   ///This reducer state has logic to allow multiple copies to cooperate
@@ -610,6 +611,7 @@ class promise_reducer {
   };
 
   ///\brief Single thread reducer state.
+  ///\implements IocAcceptorConcept
   ///\ingroup objpipe_detail
   ///\details
   ///Accepts values and fills in the associated promise when destroyed.

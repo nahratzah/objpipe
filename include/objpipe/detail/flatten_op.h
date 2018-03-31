@@ -335,6 +335,8 @@ using flatten_op_store = std::conditional_t<
 
 /**
  * \brief Implements the flatten operation, that iterates over each element of a collection value.
+ * \implements TransformationConcept
+ * \implements IocPushConcept
  * \ingroup objpipe_detail
  *
  * \details

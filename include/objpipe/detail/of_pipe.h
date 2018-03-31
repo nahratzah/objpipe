@@ -15,9 +15,14 @@ namespace objpipe::detail {
 
 /**
  * \brief Object pipe containing a single element.
+ * \implements SourceConcept
  * \ingroup objpipe_detail
  *
- * \details The object pipe yields the single element it was constructed with.
+ * \details
+ * The object pipe yields the single element it was constructed with.
+ *
+ * If T is ``std::reference_wrapper``, the type of elements in the objpipe
+ * is ``const T&``. (This is handled via a specialization of of_pipe).
  * \sa \ref objpipe::of
  */
 template<typename T>
@@ -91,6 +96,16 @@ class of_pipe {
   T val_;
 };
 
+/**
+ * \brief Specialization of of_pipe for reference wrappers.
+ * \implements SourceConcept
+ * \ingroup objpipe_detail
+ *
+ * \details
+ * The object pipe yields the single element it was constructed with.
+ *
+ * \sa \ref objpipe::of
+ */
 template<typename T>
 class of_pipe<std::reference_wrapper<T>> {
  private:

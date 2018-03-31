@@ -1,0 +1,161 @@
+/**
+\defgroup objpipe_concepts Concepts
+\ingroup objpipe
+ */
+
+/**
+\interface SourceConcept
+\ingroup objpipe_concepts
+\brief Sources provide data.
+\details
+\attention Mandatory.
+
+A source is sequentially traversable, using front(), pop_front(), pull() and try_pull().
+
+A source must be [Move Constructible](http://en.cppreference.com/w/cpp/concept/MoveConstructible).
+
+\note
+A source does not have to be
+[Default Constructible](http://en.cppreference.com/w/cpp/concept/DefaultConstructible),
+[Copy Constructible](http://en.cppreference.com/w/cpp/concept/CopyConstructible),
+[Move Assignable](http://en.cppreference.com/w/cpp/concept/MoveAssignable),
+[Copy Assignable](http://en.cppreference.com/w/cpp/concept/CopyAssignable),
+nor [Swappable](http://en.cppreference.com/w/cpp/concept/Swappable).
+It is discouraged to enable these traits, unless there is a good reason to.
+
+Minimum viable implementation:
+\code
+template<typename ValueType>
+class SourceConcept {
+ public:
+  SourceConcept(SourceConcept&&);
+
+  bool is_pullable() noexcept;
+  objpipe::objpipe_errc wait();
+  objpipe::detail::transport<ValueType> front();
+  objpipe::objpipe_errc pop_front();
+};
+\endcode
+
+Sources are not accessed directly by users of the library.
+Only by implementors of a \ref TransformationConcept "transformation".
+Instead, sources are wrapped inside an \ref objpipe::detail::adapter_t "adapter".
+ */
+
+/**
+\typedef ValueType
+\memberof SourceConcept
+\brief Each source shall have a value type.
+\details
+\attention Conceptual Only.
+
+This is a conceptual value type.
+No real type def is required to meet this.
+
+\note The value type is deduced by objpipe::detail::adapt::value_type, by checking the result type of front().
+ */
+
+/**
+\fn objpipe::detail::transport<Type> front()
+\memberof SourceConcept
+\brief Returns the front of the source.
+\details
+\attention Mandatory.
+
+The transport holds the value on successful calls to front().
+
+On failed calls, the transport will hold an objpipe::objpipe_errc indicating the reason for failure.
+The error shall not be \ref objpipe::objpipe_errc::success "success".
+
+It is an error to call front() twice, without advancing the source.
+Such code may result in undefined behaviour.
+
+\tparam Type
+A, possibly const, possibly reference, qualified type.
+``std::remove_const_t<std::remove_reference_t<Type>>`` shall be equal to the ValueType.
+ */
+
+/**
+\fn objpipe::objpipe_errc pop_front()
+\memberof SourceConcept
+\brief Invalidates the front() reference and advances the source.
+\details
+\attention Mandatory.
+
+\note A call to pop_front(), that has not been preceded by a call to front(), shall skip the element.
+
+\returns An objpipe_errc indicating if the operation succeeded.
+ */
+
+/**
+\fn objpipe::objpipe_errc wait()
+\memberof SourceConcept
+\brief Wait for more data to become available.
+\details
+\attention Mandatory.
+
+Blocks until more data is available.
+
+If the source is drained, \ref objpipe::objpipe_errc::closed "closed" shall be returned.
+If more data is available, \ref objpipe::objpipe_errc::success "success" shall be returned.
+Any other return value indicates the objpipe is in an error state.
+ */
+
+/**
+\fn bool is_pullable()
+\memberof SourceConcept
+\brief Test if the source has the potential to successfully read data.
+\details
+\attention Mandatory.
+
+Tests if the source either has pending data, or has an external source of acquiring more data.
+
+May not throw exceptions.
+
+\note The result may be a false positive (but shall never be a false negative).
+
+\deprecated This member is not used by anyone and not all that useful after all.
+\bug Comb the source and remove it.
+ */
+
+/**
+\fn transport<Type> pull()
+\memberof SourceConcept
+\brief Returns the next element from the source.
+\details
+\attention Optional.
+
+Like front(), except shall not require a matching call to pop_front().
+
+If a reference is returned, that referene shall remain valid until the next call to front(), or pull().
+
+It is an error to call pull(), if it is preceded by a call to front(), without an in-between call to pop_front().
+
+\tparam Type
+A, possibly const, possibly reference, qualified type.
+``std::remove_const_t<std::remove_reference_t<Type>>`` shall be equal to the ValueType.
+\note The Type of pull() does not have to match the type of front().
+ */
+
+/**
+\fn transport<Type> try_pull()
+\memberof SourceConcept
+\brief Returns the next element from the source.
+\details
+\attention Optional.
+
+Like pull(), except that if a value is not immediately available, the returned transport will be empty, with a \ref objpipe::objpipe_errc::success "success" code.
+
+If a reference is returned, that referene shall remain valid until the next call to front(), or pull().
+
+It is an error to call try_pull(), if it is preceded by a call to front(), without an in-between call to pop_front().
+
+\deprecated
+I'm thinking of removing this, as it's not that useful a method and makes implementing transformations a lot harder.
+Also, not all transformations wrap this properly.
+
+\tparam Type
+A, possibly const, possibly reference, qualified type.
+``std::remove_const_t<std::remove_reference_t<Type>>`` shall be equal to the ValueType.
+\note The Type of pull() does not have to match the type of front().
+ */

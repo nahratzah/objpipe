@@ -580,6 +580,18 @@ class interlock_impl final
   interlock_acceptor_intf<T>* acceptor_ = nullptr;
 };
 
+/**
+ * \brief Objpipe for interlock.
+ * \implements SourceConcept
+ * \implements IocPushConcept
+ * \ingroup objpipe_detail
+ *
+ * \details
+ * The interlock pipe is able to read elements that are published by a \ref interlock_writer "writer".
+ *
+ * \tparam T The (possibly const qualified) type of elements in the objpipe.
+ * \sa interlock_writer
+ */
 template<typename T>
 class interlock_pipe {
  public:
@@ -695,6 +707,25 @@ class interlock_pipe {
   interlock_impl<T>* ptr_ = nullptr;
 };
 
+/**
+ * \brief Writer for the interlock.
+ * \implements IocAcceptorConcept
+ * \ingroup objpipe_detail
+ *
+ * \details
+ * The writer publishes elements for the interlock_pipe to consume.
+ *
+ * The writer blocks until the object has been consumed.
+ *
+ * \note
+ * Writers are not thread safe.
+ * If you wish to use a writer across multiple threads, you should make a copy
+ * for each thread (multiple copies share access to the receiving interlock_pipe).
+ * (Alternatively, you can add external synchronization.)
+ *
+ * \tparam T The (possibly const qualified) type of elements in the objpipe.
+ * \sa interlock_writer
+ */
 template<typename T>
 class interlock_writer {
  public:

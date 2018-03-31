@@ -1,6 +1,9 @@
 #ifndef OBJPIPE_DETAIL_DEREF_OP_H
 #define OBJPIPE_DETAIL_DEREF_OP_H
 
+///\file
+///\ingroup objpipe_detail
+
 #include <type_traits>
 #include <utility>
 #include <objpipe/detail/invocable_.h>
@@ -9,6 +12,7 @@ namespace objpipe::detail {
 
 
 ///\brief Implements the dereference operator for T.
+///\ingroup objpipe_detail
 ///\details Simply invokes operator* on an instance of T.
 struct deref_op {
   ///\brief Test if the type T is dereferencable.
