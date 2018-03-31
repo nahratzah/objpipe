@@ -380,7 +380,7 @@ class flatten_op {
   noexcept(noexcept(std::declval<Source&>().is_pullable())
       && ensure_avail_noexcept)
   -> bool {
-    return src_.is_pullable() || ensure_avail_() == objpipe_errc::success;
+    return (active_.has_value() && !active_->empty()) || src_.is_pullable();
   }
 
   auto wait()
@@ -417,6 +417,8 @@ class flatten_op {
     return objpipe_errc::success;
   }
 
+  ///\bug I don't think this works correct,
+  ///if the collection is an input iterator to references, due to the call to advance().
   auto pull()
   noexcept(ensure_avail_noexcept
       && noexcept(std::declval<store_type&>().deref())
@@ -435,6 +437,8 @@ class flatten_op {
     return transport<item_type>(std::in_place_index<1>, e);
   }
 
+  ///\bug I don't think this works correct,
+  ///if the collection is an input iterator to references, due to the call to advance().
   auto try_pull()
   noexcept(ensure_avail_noexcept
       && noexcept(std::declval<store_type&>().deref())
@@ -467,6 +471,8 @@ class flatten_op {
         std::decay_t<Acceptor>,
         std::decay_t<PushTag>>;
 
+    assert(!active_.has_value());
+
     // adapt::ioc_push will provide a fallback if multithread_push is unavailable.
     adapt::ioc_push(
         std::move(src_),
@@ -478,6 +484,8 @@ class flatten_op {
   auto ensure_avail_()
   noexcept(ensure_avail_noexcept)
   -> objpipe_errc {
+    assert(!pending_pop_);
+
     while (!active_.has_value() || active_->empty()) {
       if (active_.has_value()) {
         assert(active_->empty());
