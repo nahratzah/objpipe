@@ -338,15 +338,17 @@ class transform_op {
     return src_.pop_front();
   }
 
+  template<bool Enable = adapt::has_try_pull<Source>>
   constexpr auto try_pull()
   noexcept(noexcept(invoke_fn_(adapt::raw_try_pull(src_))))
-  -> transport<try_pull_type> {
+  -> std::enable_if_t<Enable, transport<try_pull_type>> {
     return invoke_fn_(adapt::raw_try_pull(src_));
   }
 
+  template<bool Enable = adapt::has_pull<Source>>
   constexpr auto pull()
   noexcept(noexcept(invoke_fn_(adapt::raw_pull(src_))))
-  -> transport<pull_type> {
+  -> std::enable_if_t<Enable, transport<pull_type>> {
     return invoke_fn_(adapt::raw_pull(src_));
   }
 
