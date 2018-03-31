@@ -402,7 +402,7 @@ class flatten_op {
   noexcept(noexcept(std::declval<Source&>().is_pullable())
       && ensure_avail_noexcept)
   -> bool {
-    return (active_.has_value() && !active_->empty()) || src_.is_pullable();
+    if (active_.has_value() || src_.is_pullable()) return true;
   }
 
   auto wait()
