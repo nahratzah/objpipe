@@ -21,7 +21,6 @@ endif()
 set(headers
     include/objpipe/array.h
     include/objpipe/callback.h
-    include/objpipe/doc_.h
     include/objpipe/errc.h
     include/objpipe/interlock.h
     include/objpipe/merge.h

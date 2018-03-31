@@ -1,9 +1,4 @@
 /**
-\defgroup objpipe_concepts Concepts
-\ingroup objpipe
- */
-
-/**
 \interface SourceConcept
 \ingroup objpipe_concepts
 \brief Sources provide data.

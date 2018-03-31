@@ -3,12 +3,17 @@
 ///\defgroup objpipe Object Pipes
 
 /**
- * \defgroup objpipe_errors Object pipe error handling
+\defgroup objpipe_concepts Concepts
+\ingroup objpipe
+ */
+
+/**
+ * \defgroup objpipe_errors Error Handling
  * \ingroup objpipe
  */
 
 /**
- * \defgroup objpipe_detail Object pipe implementation details
+ * \defgroup objpipe_detail Implementation Details
  * \ingroup objpipe
  */
 
@@ -21,7 +26,6 @@
  * \ingroup objpipe
  */
 namespace objpipe {
-
 
 /**
  * \brief Namespace for object pipe implementation details.
