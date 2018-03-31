@@ -169,8 +169,8 @@ class flatten_push {
 
 
 template<typename Collection>
-class flatten_op_store_copy_ {
- public:
+class flatten_op_store {
+ private:
   using collection = Collection;
   using begin_iterator =
       std::decay_t<decltype(make_move_iterator(flatten_op_begin_(std::declval<collection&>())))>;
@@ -181,156 +181,64 @@ class flatten_op_store_copy_ {
       std::is_base_of_v<std::input_iterator_tag, typename std::iterator_traits<begin_iterator>::iterator_category>,
       "Collection iterator must be an input iterator");
 
-  constexpr flatten_op_store_copy_(collection&& c)
+  using data_type = std::conditional_t<
+      std::is_reference_v<collection>,
+      std::tuple<begin_iterator, end_iterator>,
+      std::tuple<begin_iterator, end_iterator, collection>>;
+
+ public:
+  ///\brief Enable pull only when its safe to do so.
+  ///\details
+  ///We can enable pull, if deref() returns by value.
+  ///
+  ///Or we can enable pull, if deref returns a reference and the iterator is
+  ///at least a forward iterator.
+  ///This because ``*iterator++`` is a valid expression for forward iterators.
+  ///
+  ///Otherwise, we conservatively disable pull, in the event that input
+  ///iterator advancement invalidates the returned value.
+  static constexpr bool enable_pull =
+      !std::is_reference_v<typename std::iterator_traits<begin_iterator>::value_type>
+      || std::is_base_of_v<std::forward_iterator_tag, typename std::iterator_traits<begin_iterator>::value_type>;
+
+  template<bool OmitCollection = std::is_reference_v<collection>>
+  flatten_op_store(std::enable_if_t<OmitCollection, collection> c)
+  noexcept(noexcept(begin_iterator(make_move_iterator(flatten_op_begin_(std::declval<std::remove_reference_t<collection>&>()))))
+      && noexcept(end_iterator(make_move_iterator(flatten_op_end_(std::declval<std::remove_reference_t<collection>&>())))))
+  : data_(make_move_iterator(flatten_op_begin_(c)), make_move_iterator(flatten_op_end_(c)))
+  {}
+
+  template<bool OmitCollection = std::is_reference_v<collection>>
+  flatten_op_store(std::enable_if_t<!OmitCollection, collection>&& c)
   noexcept(std::is_nothrow_move_constructible_v<collection>
-      && noexcept(begin_iterator(make_move_iterator(flatten_op_begin_(std::declval<collection&>()))))
-      && noexcept(end_iterator(make_move_iterator(flatten_op_end_(std::declval<collection&>())))))
-  : c_(std::move(c)),
-    begin_(make_move_iterator(flatten_op_begin_(c_))),
-    end_(make_move_iterator(flatten_op_end_(c_)))
-  {}
-
-  constexpr flatten_op_store_copy_(const collection& c)
-  noexcept(std::is_nothrow_copy_constructible_v<collection>
-      && noexcept(begin_iterator(make_move_iterator(flatten_op_begin_(std::declval<const collection&>()))))
-      && noexcept(end_iterator(make_move_iterator(flatten_op_end_(std::declval<const collection&>())))))
-  : c_(c),
-    begin_(make_move_iterator(flatten_op_begin_(c_))),
-    end_(make_move_iterator(flatten_op_end_(c_)))
+      && noexcept(begin_iterator(make_move_iterator(flatten_op_begin_(std::declval<std::remove_reference_t<collection>&>()))))
+      && noexcept(end_iterator(make_move_iterator(flatten_op_end_(std::declval<std::remove_reference_t<collection>&>())))))
+  : data_(make_move_iterator(flatten_op_begin_(c)), make_move_iterator(flatten_op_end_(c)), std::move(c))
   {}
 
   constexpr auto empty() const
   noexcept(noexcept(std::declval<const begin_iterator&>() == std::declval<const end_iterator&>()))
   -> bool {
-    return begin_ == end_;
+    return std::get<0>(data_) == std::get<1>(data_);
   }
 
   auto deref() const
   noexcept(noexcept(*std::declval<const begin_iterator&>()))
   -> decltype(*std::declval<const begin_iterator&>()) {
-    assert(begin_ != end_);
-    return *begin_;
+    assert(std::get<0>(data_) != std::get<1>(data_));
+    return *std::get<0>(data_);
   }
 
   auto advance()
   noexcept(noexcept(++std::declval<begin_iterator&>()))
   -> void {
-    assert(begin_ != end_);
-    ++begin_;
+    assert(std::get<0>(data_) != std::get<1>(data_));
+    ++std::get<0>(data_);
   }
 
  private:
-  collection c_;
-  begin_iterator begin_;
-  end_iterator end_;
+  data_type data_;
 };
-
-template<typename Collection>
-class flatten_op_store_ref_ {
- public:
-  using collection = Collection;
-  using begin_iterator =
-      std::decay_t<decltype(flatten_op_begin_(std::declval<collection&>()))>;
-  using end_iterator =
-      std::decay_t<decltype(flatten_op_end_(std::declval<collection&>()))>;
-
-  static_assert(
-      std::is_base_of_v<std::input_iterator_tag, typename std::iterator_traits<begin_iterator>::iterator_category>,
-      "Collection iterator must be an input iterator");
-
-  constexpr flatten_op_store_ref_(collection&& c)
-  noexcept(noexcept(begin_iterator(flatten_op_begin_(std::declval<collection&>())))
-      && noexcept(end_iterator(flatten_op_end_(std::declval<collection&>()))))
-  : begin_(flatten_op_begin_(c)),
-    end_(flatten_op_end_(c))
-  {}
-
-  constexpr flatten_op_store_ref_(collection& c)
-  noexcept(noexcept(begin_iterator(flatten_op_begin_(std::declval<collection&>())))
-      && noexcept(end_iterator(flatten_op_end_(std::declval<collection&>()))))
-  : begin_(flatten_op_begin_(c)),
-    end_(flatten_op_end_(c))
-  {}
-
-  constexpr auto empty() const
-  noexcept(noexcept(std::declval<const begin_iterator&>() == std::declval<const end_iterator&>()))
-  -> bool {
-    return begin_ == end_;
-  }
-
-  auto deref() const
-  noexcept(noexcept(*std::declval<const begin_iterator&>()))
-  -> decltype(*std::declval<const begin_iterator&>()) {
-    assert(begin_ != end_);
-    return *begin_;
-  }
-
-  auto advance()
-  noexcept(noexcept(++std::declval<begin_iterator&>()))
-  -> void {
-    assert(begin_ != end_);
-    ++begin_;
-  }
-
- private:
-  begin_iterator begin_;
-  end_iterator end_;
-};
-
-template<typename Collection>
-class flatten_op_store_rref_ {
- public:
-  using collection = Collection;
-  using begin_iterator =
-      std::decay_t<decltype(make_move_iterator(flatten_op_begin_(std::declval<collection&>())))>;
-  using end_iterator =
-      std::decay_t<decltype(make_move_iterator(flatten_op_end_(std::declval<collection&>())))>;
-
-  static_assert(
-      std::is_base_of_v<std::input_iterator_tag, typename std::iterator_traits<begin_iterator>::iterator_category>,
-      "Collection iterator must be an input iterator");
-
-  constexpr flatten_op_store_rref_(collection&& c)
-  noexcept(noexcept(begin_iterator(make_move_iterator(flatten_op_begin_(std::declval<collection&>()))))
-      && noexcept(end_iterator(make_move_iterator(flatten_op_end_(std::declval<collection&>())))))
-  : begin_(make_move_iterator(flatten_op_begin_(c))),
-    end_(make_move_iterator(flatten_op_end_(c)))
-  {}
-
-  constexpr auto empty() const
-  noexcept(noexcept(std::declval<const begin_iterator&>() == std::declval<const end_iterator&>()))
-  -> bool {
-    return begin_ == end_;
-  }
-
-  auto deref() const
-  noexcept(noexcept(*std::declval<const begin_iterator&>()))
-  -> decltype(*std::declval<const begin_iterator&>()) {
-    assert(begin_ != end_);
-    return *begin_;
-  }
-
-  auto advance()
-  noexcept(noexcept(++std::declval<begin_iterator&>()))
-  -> void {
-    ++begin_;
-  }
-
- private:
-  begin_iterator begin_;
-  end_iterator end_;
-};
-
-///\brief Select the store implementation for pull-based flatten_op.
-///\ingroup objpipe_detail
-template<typename Collection>
-using flatten_op_store = std::conditional_t<
-    std::is_volatile_v<Collection> || !std::is_reference_v<Collection>,
-    flatten_op_store_copy_<std::decay_t<Collection>>,
-    std::conditional_t<
-        std::is_lvalue_reference_v<Collection> || std::is_const_v<Collection>,
-        flatten_op_store_ref_<std::remove_reference_t<Collection>>,
-        flatten_op_store_rref_<std::remove_reference_t<Collection>>>>;
 
 
 /**
@@ -417,8 +325,7 @@ class flatten_op {
     return objpipe_errc::success;
   }
 
-  ///\bug I don't think this works correct,
-  ///if the collection is an input iterator to references, due to the call to advance().
+  template<bool Enable = store_type::enable_pull>
   auto pull()
   noexcept(ensure_avail_noexcept
       && noexcept(std::declval<store_type&>().deref())
@@ -426,7 +333,7 @@ class flatten_op {
           || std::is_rvalue_reference_v<item_type>
           || std::is_nothrow_move_constructible_v<item_type>)
       && noexcept(std::declval<store_type&>().advance()))
-  -> transport<item_type> {
+  -> std::enable_if_t<Enable, transport<item_type>> {
     assert(!pending_pop_);
     const objpipe_errc e = ensure_avail_();
     if (e == objpipe_errc::success) {
@@ -435,19 +342,6 @@ class flatten_op {
       return result;
     }
     return transport<item_type>(std::in_place_index<1>, e);
-  }
-
-  ///\bug I don't think this works correct,
-  ///if the collection is an input iterator to references, due to the call to advance().
-  auto try_pull()
-  noexcept(ensure_avail_noexcept
-      && noexcept(std::declval<store_type&>().deref())
-      && (std::is_lvalue_reference_v<item_type>
-          || std::is_rvalue_reference_v<item_type>
-          || std::is_nothrow_move_constructible_v<item_type>)
-      && noexcept(std::declval<store_type&>().advance()))
-  -> transport<item_type> {
-    return pull();
   }
 
   template<typename PushTag>
