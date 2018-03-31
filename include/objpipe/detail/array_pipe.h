@@ -14,7 +14,6 @@
 #include <objpipe/errc.h>
 #include <objpipe/push_policies.h>
 #include <objpipe/detail/transport.h>
-#include <objpipe/detail/thread_pool.h>
 #include <objpipe/detail/adapt.h>
 #include <objpipe/detail/task.h>
 
@@ -112,7 +111,7 @@ class array_pipe {
       auto slice_end = (e - b > batch_size ? std::next(b, batch_size) : e);
       auto next_sink = sink; // Copy.
 
-      thread_pool::default_pool().publish(
+      tag.post(
           make_task(
               // Note: data is passed because it has ownership of the range that b,e describe.
               []([[maybe_unused]] std::shared_ptr<data_type> data, auto&& sink, auto&& b, auto&& e) {

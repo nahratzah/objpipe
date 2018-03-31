@@ -5,6 +5,10 @@
 ///\ingroup objpipe
 ///\brief Policy types for push operations.
 
+#include <functional>
+#include <objpipe/detail/thread_pool.h>
+#include <objpipe/detail/task.h>
+
 namespace objpipe {
 
 
@@ -20,8 +24,20 @@ struct existingthread_push {};
 ///\brief Tag indicating IOC should be single threaded.
 ///\ingroup objpipe
 struct singlethread_push
-: existingthread_push
-{};
+: existingthread_push {
+  ///\brief Start a new task.
+  ///\details The task shall be run exactly once.
+  auto post(std::function<void()> fn) -> void {
+    detail::thread_pool::default_pool().publish(std::move(fn));
+  }
+
+  ///\brief Start a new task.
+  ///\details The task shall be run exactly once.
+  template<typename Fn, typename... Args>
+  auto post(detail::task<Fn, Args...>&& fn) -> void {
+    post(std::move(fn).as_function());
+  }
+};
 
 ///\brief Tag indicating multi threaded IOC should partition its data, preserving ordering.
 ///\ingroup objpipe

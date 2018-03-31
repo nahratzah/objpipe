@@ -64,6 +64,7 @@ class task {
   ///\details
   ///We use a shared pointer to task, as the task isn't copy constructibe,
   ///but std::function requires this.
+  ///\note Must be called explicitly, since std::function accepts all tasks as arguments.
   ///\tparam ResultType The result type of the function. Defaults to ``void``.
   ///\returns A std::function representing this task.
   template<typename ResultType = void>
@@ -76,21 +77,15 @@ class task {
       // Just return fn_, as it qualifies immediately.
       return std::move(fn_);
     } else {
+      auto task_ptr = std::make_shared<task>(std::move(*this));
       return std::function<ResultType()>(
-          [](const std::shared_ptr<task>& ptr) -> ResultType {
+          [task_ptr]() -> ResultType {
             if constexpr(std::is_same_v<void, std::decay_t<ResultType>>)
-              std::invoke(*ptr);
+              std::invoke(*task_ptr);
             else
-              return std::invoke(*ptr);
-          },
-          std::make_unique<task>(std::move(*this)));
+              return std::invoke(*task_ptr);
+          });
     }
-  }
-
-  ///\brief Allow conversion to std::function.
-  template<typename ResultType, typename = std::enable_if_t<std::is_convertible_v<result_type, ResultType>>>
-  explicit operator std::function<ResultType()>() && {
-    return std::move(*this).template as_function<ResultType>();
   }
 
  private:
