@@ -93,14 +93,14 @@ class array_pipe {
     return rv;
   }
 
-  constexpr auto can_push([[maybe_unused]] multithread_push tag) const
+  constexpr auto can_push([[maybe_unused]] const multithread_push& tag) const
   noexcept
   -> bool {
     return true;
   }
 
   template<typename Acceptor>
-  auto ioc_push([[maybe_unused]] multithread_push tag, Acceptor&& acceptor) &&
+  auto ioc_push(const multithread_push& tag, Acceptor&& acceptor) &&
   -> void {
     const std::shared_ptr<data_type> data = std::make_shared<data_type>(std::move(data_));
 
