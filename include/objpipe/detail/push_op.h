@@ -936,28 +936,61 @@ class async_adapter_t {
       }
     }
 
-    // Alternative case: use (lazy or threaded) future to perform reduction.
-    return std::async(
-        std::is_same_v<existingthread_push, PushTag> ? std::launch::deferred : std::launch::async,
-        [](Source&& src, std::decay_t<Init>&& init, const acceptor_adapter<std::decay_t<Acceptor>>& acceptor, std::decay_t<Extractor>&& extractor) -> result_type {
-          auto state = std::invoke(std::move(init));
-          for (;;) {
-            auto tx_val = adapt::raw_pull(src);
-            if (tx_val.has_value()) {
-              std::invoke(acceptor, state, std::move(tx_val).value());
-            } else if (tx_val.errc() == objpipe_errc::closed) {
-              break;
-            } else {
-              throw objpipe_error(tx_val.errc());
-            }
-          }
+    if constexpr(std::is_base_of_v<singlethread_push, PushTag>) {
+      std::promise<result_type> p;
+      std::future<result_type> f = p.get_future();
 
-          return std::invoke(std::move(extractor), std::move(state));
-        },
-        std::move(src_),
-        std::forward<Init>(init),
-        acceptor_adapter<std::decay_t<Acceptor>>(std::forward<Acceptor>(acceptor)),
-        std::forward<Extractor>(extractor));
+      push_tag_.post(
+          make_task(
+              [](std::promise<result_type> p, Source&& src, std::decay_t<Init>&& init, const acceptor_adapter<std::decay_t<Acceptor>>& acceptor, std::decay_t<Extractor>&& extractor) -> void {
+                try {
+                  auto state = std::invoke(std::move(init));
+                  for (;;) {
+                    auto tx_val = adapt::raw_pull(src);
+                    if (tx_val.has_value()) {
+                      std::invoke(acceptor, state, std::move(tx_val).value());
+                    } else if (tx_val.errc() == objpipe_errc::closed) {
+                      break;
+                    } else {
+                      throw objpipe_error(tx_val.errc());
+                    }
+                  }
+
+                  p.set_value(std::invoke(std::move(extractor), std::move(state)));
+                } catch (...) {
+                  p.set_exception(std::current_exception());
+                }
+              },
+              std::move(p),
+              std::move(src_),
+              std::forward<Init>(init),
+              acceptor_adapter<std::decay_t<Acceptor>>(std::forward<Acceptor>(acceptor)),
+              std::forward<Extractor>(extractor)));
+      return f;
+    } else {
+      // For existing_thread: use (lazy or threaded) future to perform reduction.
+      return std::async(
+          std::launch::deferred,
+          [](Source&& src, std::decay_t<Init>&& init, const acceptor_adapter<std::decay_t<Acceptor>>& acceptor, std::decay_t<Extractor>&& extractor) -> result_type {
+            auto state = std::invoke(std::move(init));
+            for (;;) {
+              auto tx_val = adapt::raw_pull(src);
+              if (tx_val.has_value()) {
+                std::invoke(acceptor, state, std::move(tx_val).value());
+              } else if (tx_val.errc() == objpipe_errc::closed) {
+                break;
+              } else {
+                throw objpipe_error(tx_val.errc());
+              }
+            }
+
+            return std::invoke(std::move(extractor), std::move(state));
+          },
+          std::move(src_),
+          std::forward<Init>(init),
+          acceptor_adapter<std::decay_t<Acceptor>>(std::forward<Acceptor>(acceptor)),
+          std::forward<Extractor>(extractor));
+    }
   }
 
   ///\brief Reduce operation.
