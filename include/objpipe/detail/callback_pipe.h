@@ -146,8 +146,7 @@ class callback_pipe {
   callback_pipe(callback_pipe&& other)
   noexcept(std::is_nothrow_move_constructible_v<fn_type>
       && std::is_nothrow_move_constructible_v<typename coro_t::pull_type>)
-  : src_(std::move(other.src_)),
-    must_advance_(std::exchange(other.must_advance_, false))
+  : src_(std::move(other.src_))
   {}
 
   callback_pipe(const callback_pipe&) = delete;
@@ -196,37 +195,14 @@ class callback_pipe {
     return objpipe_errc::success;
   }
 
-  auto pull()
-  -> transport<result_type> {
-    ensure_init_();
-    auto& coro = std::get<1>(src_);
-
-    if (!coro) return transport<result_type>(std::in_place_index<1>, objpipe_errc::closed);
-    must_advance_ = true;
-    return transport<result_type>(std::in_place_index<0>, get());
-  }
-
-  auto try_pull()
-  -> transport<result_type> {
-    ensure_init_();
-    auto& coro = std::get<1>(src_);
-
-    if (!coro) return transport<result_type>(std::in_place_index<1>, objpipe_errc::closed);
-    must_advance_ = true;
-    return transport<result_type>(std::in_place_index<0>, get());
-  }
-
  private:
   void ensure_init_() {
     if (src_.index() == 0) {
-      assert(!must_advance_);
       fn_type fn = std::get<0>(std::move(src_));
       src_.template emplace<1>(
           boost::coroutines2::protected_fixedsize_stack(),
           std::move(fn));
     }
-
-    if (std::exchange(must_advance_, false)) std::get<1>(src_)();
   }
 
   auto get()
@@ -240,7 +216,6 @@ class callback_pipe {
   }
 
   std::variant<fn_type, typename coro_t::pull_type> src_;
-  bool must_advance_ = false;
 };
 
 
