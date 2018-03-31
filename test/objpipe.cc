@@ -9,6 +9,7 @@
 #include <tuple>
 #include <thread>
 #include <functional>
+#include <list>
 
 using objpipe::objpipe_errc;
 using objpipe::existingthread_push;
@@ -535,6 +536,22 @@ TEST(iteration_multithread_unordered_push) {
 
   std::sort(result.begin(), result.end()); // Because result has no ordering.
   CHECK_EQUAL(expect, result);
+}
+
+TEST(iteration_over_objpipes) {
+  CHECK_EQUAL(
+      std::vector<int>({ 0, 1, 2, 3, 4 }),
+      objpipe::of(objpipe::new_array<int>({ 0, 1, 2 }), objpipe::new_array<int>({ 3, 4 }))
+          .iterate()
+          .to_vector());
+}
+
+TEST(iteration_over_collections) {
+  CHECK_EQUAL(
+      std::vector<int>({ 0, 1, 2, 3, 4 }),
+      objpipe::of(std::list<int>({ 0, 1, 2 }), std::list<int>({ 3, 4 }))
+          .iterate()
+          .to_vector());
 }
 
 TEST(reader_to_vector) {

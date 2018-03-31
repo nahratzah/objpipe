@@ -168,6 +168,69 @@ class flatten_push {
 };
 
 
+template<typename Collection, typename BeginIter, typename EndIter, bool IsReference = std::is_reference_v<Collection>>
+class flatten_op_store_data {
+  static_assert(std::is_reference_v<Collection>);
+
+ public:
+  flatten_op_store_data(Collection c)
+  : begin_(make_move_iterator(flatten_op_begin_(c))),
+    end_(make_move_iterator(flatten_op_end_(c)))
+  {}
+
+  flatten_op_store_data(flatten_op_store_data&&) = default;
+
+  auto empty() const
+  noexcept(noexcept(std::declval<const BeginIter&>() == std::declval<const EndIter&>()))
+  -> bool {
+    return begin_ == end_;
+  }
+
+  auto iter()
+  -> BeginIter& {
+    return begin_;
+  }
+
+ private:
+  BeginIter begin_;
+  EndIter end_;
+};
+
+template<typename Collection, typename BeginIter, typename EndIter>
+class flatten_op_store_data<Collection, BeginIter, EndIter, false> {
+ public:
+  flatten_op_store_data(Collection&& c)
+  : c_(std::make_unique<Collection>(std::move(c))),
+    begin_(make_move_iterator(flatten_op_begin_(*this->c_))),
+    end_(make_move_iterator(flatten_op_end_(*this->c_)))
+  {}
+
+  flatten_op_store_data(flatten_op_store_data&&) = default;
+
+  auto empty() const
+  noexcept(noexcept(std::declval<const BeginIter&>() == std::declval<const EndIter&>()))
+  -> bool {
+    return begin_ == end_;
+  }
+
+  auto iter()
+  -> BeginIter& {
+    return begin_;
+  }
+
+ private:
+  ///\brief Pointer to collection.
+  ///\details
+  ///Store collection using a pointer, so we don't try to move it
+  ///when we are moved.
+  ///The logic being that moving a collection may cause iterator invalidation
+  ///(example: std::array).
+  std::unique_ptr<Collection> c_;
+
+  BeginIter begin_;
+  EndIter end_;
+};
+
 template<typename Collection, bool IsAdapter = is_adapter_v<std::decay_t<Collection>>>
 class flatten_op_store {
  private:
@@ -181,10 +244,10 @@ class flatten_op_store {
       std::is_base_of_v<std::input_iterator_tag, typename std::iterator_traits<begin_iterator>::iterator_category>,
       "Collection iterator must be an input iterator");
 
-  using data_type = std::conditional_t<
-      std::is_reference_v<collection>,
-      std::tuple<begin_iterator, end_iterator>,
-      std::tuple<begin_iterator, end_iterator, collection>>;
+  using data_type = flatten_op_store_data<collection, begin_iterator, end_iterator>;
+
+  static constexpr bool noexcept_iter_compare =
+      noexcept(std::declval<const begin_iterator&>() == std::declval<const end_iterator&>());
 
  public:
   using transport_type = transport<typename std::iterator_traits<begin_iterator>::reference>;
@@ -203,11 +266,9 @@ class flatten_op_store {
       !std::is_reference_v<typename std::iterator_traits<begin_iterator>::value_type>
       || std::is_base_of_v<std::forward_iterator_tag, typename std::iterator_traits<begin_iterator>::value_type>;
 
-  template<bool OmitCollection = std::is_reference_v<collection>>
-  flatten_op_store(std::enable_if_t<OmitCollection, collection> c)
-  noexcept(noexcept(begin_iterator(make_move_iterator(flatten_op_begin_(std::declval<std::remove_reference_t<collection>&>()))))
-      && noexcept(end_iterator(make_move_iterator(flatten_op_end_(std::declval<std::remove_reference_t<collection>&>())))))
-  : data_(make_move_iterator(flatten_op_begin_(c)), make_move_iterator(flatten_op_end_(c)))
+  flatten_op_store(std::add_rvalue_reference_t<collection> c)
+  noexcept(std::is_nothrow_constructible_v<data_type, std::add_rvalue_reference_t<collection>>)
+  : data_(std::forward<collection>(c))
   {}
 
   template<bool OmitCollection = std::is_reference_v<collection>>
@@ -218,25 +279,84 @@ class flatten_op_store {
   : data_(make_move_iterator(flatten_op_begin_(c)), make_move_iterator(flatten_op_end_(c)), std::move(c))
   {}
 
-  auto front() const
-  noexcept(noexcept(*std::declval<const begin_iterator&>()))
+  auto wait()
+  noexcept(noexcept_iter_compare)
+  -> objpipe_errc {
+    return (data_.empty() ? objpipe_errc::closed : objpipe_errc::success);
+  }
+
+  auto front()
+  noexcept(noexcept_iter_compare && noexcept(*std::declval<const begin_iterator&>()))
   -> transport_type {
-    if (std::get<0>(data_) == std::get<1>(data_))
+    if (data_.empty())
       return transport_type(std::in_place_index<1>, objpipe_errc::closed);
-    return transport_type(std::in_place_index<0>, *std::get<0>(data_));
+    return transport_type(std::in_place_index<0>, *data_.iter());
   }
 
   auto pop_front()
-  noexcept(noexcept(++std::declval<begin_iterator&>()))
+  noexcept(noexcept_iter_compare && noexcept(++std::declval<begin_iterator&>()))
   -> objpipe_errc {
-    if (std::get<0>(data_) == std::get<1>(data_))
+    if (data_.empty())
       return objpipe_errc::closed;
-    ++std::get<0>(data_);
+    ++data_.iter();
     return objpipe_errc::success;
+  }
+
+  template<bool Enable = enable_pull>
+  auto pull()
+  noexcept
+  -> transport_type {
+    if (data_.empty())
+      return transport_type(std::in_place_index<1>, objpipe_errc::closed);
+
+    auto tx = transport_type(std::in_place_index<0>, *data_.iter());
+    ++data_.iter();
+    return tx;
   }
 
  private:
   data_type data_;
+};
+
+template<typename Source>
+class flatten_op_store<Source, true> {
+ public:
+  using transport_type = transport<adapt::front_type<adapter_underlying_type_t<std::decay_t<Source>>>>;
+
+  static constexpr auto enable_pull = adapt::has_pull<adapter_underlying_type_t<std::decay_t<Source>>>;
+
+  flatten_op_store(Source src)
+  noexcept(std::is_nothrow_constructible_v<std::decay_t<Source>, Source>)
+  : src_(std::forward<Source>(src))
+  {}
+
+  auto wait()
+  noexcept(noexcept(std::declval<std::decay_t<Source>&>().underlying().wait()))
+  -> objpipe_errc {
+    return src_.underlying().wait();
+  }
+
+  auto front()
+  noexcept(noexcept(std::declval<std::decay_t<Source>&>().underlying().front()))
+  -> auto {
+    return src_.underlying().front();
+  }
+
+  auto pop_front()
+  noexcept(noexcept(std::declval<std::decay_t<Source>&>().underlying().pop_front()))
+  -> auto {
+    return src_.underlying().pop_front();
+  }
+
+  template<bool Enable = enable_pull>
+  auto pull()
+  noexcept
+  -> auto {
+    return src_.underlying().pull();
+  }
+
+ private:
+  Source src_; // This may be a reference.
 };
 
 
@@ -287,7 +407,19 @@ class flatten_op {
   auto wait()
   noexcept(ensure_avail_noexcept)
   -> objpipe_errc {
-    return ensure_avail_();
+    objpipe_errc e;
+    for (e = ensure_avail_();
+        e == objpipe_errc::success;
+        e = ensure_avail_()) {
+      e = active_->wait();
+      if (e == objpipe_errc::success) return e;
+      if (e == objpipe_errc::closed)
+        e = consume_active_();
+      if (e != objpipe_errc::success)
+        return e;
+    }
+
+    return e;
   }
 
   auto front()
@@ -340,20 +472,16 @@ class flatten_op {
       && noexcept(std::declval<store_type&>().front())
       && noexcept(std::declval<store_type&>().pop_front())
       && std::is_nothrow_move_constructible_v<transport_type>)
-  -> std::enable_if_t<Enable, transport_type> {
+  -> std::enable_if_t<Enable, decltype(std::declval<store_type&>().pull())> {
     objpipe_errc e;
     for (e = ensure_avail_();
         e == objpipe_errc::success;
         e = ensure_avail_()) {
-      auto result = active_->front();
+      auto result = active_->pull();
       if (result.errc() == objpipe_errc::closed) {
-        consume_active_();
+        e = consume_active_();
+        if (e != objpipe_errc::success) break;
       } else {
-        if (result.errc() == objpipe_errc::success) {
-          e = active_->pop_front();
-          if (e != objpipe_errc::success)
-            result.emplace(std::in_place_index<1>, e);
-        }
         return result;
       }
     }
