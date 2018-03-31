@@ -1,6 +1,9 @@
 #ifndef OBJPIPE_DETAIL_THREAD_POOL_H
 #define OBJPIPE_DETAIL_THREAD_POOL_H
 
+///\file
+///\ingroup objpipe_detail
+
 #include <chrono>
 #include <condition_variable>
 #include <deque>

@@ -1,6 +1,9 @@
 #ifndef OBJPIPE_DETAIL_TRANSPORT_H
 #define OBJPIPE_DETAIL_TRANSPORT_H
 
+///\file
+///\ingroup objpipe_detail
+
 #include <memory>
 #include <type_traits>
 #include <variant>

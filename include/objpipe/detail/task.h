@@ -1,6 +1,9 @@
 #ifndef OBJPIPE_DETAIL_TASK_H
 #define OBJPIPE_DETAIL_TASK_H
 
+///\file
+///\ingroup objpipe_detail
+
 #include <type_traits>
 
 namespace objpipe::detail {
