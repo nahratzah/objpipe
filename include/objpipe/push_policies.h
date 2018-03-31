@@ -24,7 +24,7 @@ class existingthread_push {};
 ///\brief Tag indicating IOC should be single threaded.
 ///\ingroup objpipe
 class singlethread_push
-: existingthread_push {
+: public existingthread_push {
  public:
   ///\brief Task functions used by the policy.
   ///\details These tasks, when posted, must be invoked exactly once.
