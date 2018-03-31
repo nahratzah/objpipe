@@ -231,7 +231,7 @@ class flatten_op_store_data<Collection, BeginIter, EndIter, false> {
   EndIter end_;
 };
 
-template<typename Collection, bool IsAdapter = is_adapter_v<std::decay_t<Collection>>>
+template<typename Collection, typename = void>
 class flatten_op_store {
  private:
   using collection = Collection;
@@ -319,11 +319,12 @@ class flatten_op_store {
 };
 
 template<typename Source>
-class flatten_op_store<Source, true> {
+class flatten_op_store<Source, std::enable_if_t<is_adapter_v<std::decay_t<Source>>>> {
  public:
-  using transport_type = transport<adapt::front_type<adapter_underlying_type_t<std::decay_t<Source>>>>;
+  using underlying_source = adapter_underlying_type_t<std::decay_t<Source>>;
+  using transport_type = transport<adapt::front_type<underlying_source>>;
 
-  static constexpr auto enable_pull = adapt::has_pull<adapter_underlying_type_t<std::decay_t<Source>>>;
+  static constexpr auto enable_pull = adapt::has_pull<underlying_source>;
 
   flatten_op_store(Source src)
   noexcept(std::is_nothrow_constructible_v<std::decay_t<Source>, Source>)
