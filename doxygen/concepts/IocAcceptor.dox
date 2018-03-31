@@ -1,7 +1,7 @@
 /**
 \interface IocAcceptorConcept
 \ingroup objpipe_concepts
-\brief Models the acceptors used by the IOC Push Interface.
+\brief Models the acceptors used by the \ref IocPushConcept "IOC Push Interface".
 \details
 An ioc-acceptor accepts values and/or exceptions.
 
