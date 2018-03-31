@@ -11,7 +11,6 @@
 #include <mutex>
 #include <objpipe/detail/invocable_.h>
 #include <objpipe/detail/task.h>
-#include <objpipe/detail/thread_pool.h>
 
 namespace objpipe::detail {
 
@@ -19,7 +18,7 @@ namespace objpipe::detail {
 /**
  * \brief Collection type used to merge batches of elements together.
  * \ingroup objpipe_detail
- * \relates merge_concat_push
+ * \relates merge_batch_push
  *
  * \details
  * We use a list, for its splice operation.
@@ -31,24 +30,26 @@ using merge_batch_type = std::list<T>;
 
 ///\brief Converts a batched stream of elements into its components.
 ///\ingroup objpipe_detail
-template<typename T, typename Sink, bool Multithreaded>
+template<typename T, typename Sink, typename TagType>
 class merge_concat_push {
  public:
-  explicit merge_concat_push(Sink&& sink)
+  explicit merge_concat_push(Sink&& sink, TagType tag)
   noexcept(std::is_nothrow_move_constructible_v<Sink>)
-  : sink_(std::move(sink))
+  : sink_(std::move(sink)),
+    tag_(std::move(tag))
   {}
 
-  explicit merge_concat_push(const Sink& sink)
+  explicit merge_concat_push(const Sink& sink, TagType tag)
   noexcept(std::is_nothrow_copy_constructible_v<Sink>)
-  : sink_(sink)
+  : sink_(sink),
+    tag_(std::move(tag))
   {}
 
   auto operator()(merge_batch_type<T>&& batch)
   -> objpipe_errc {
     assert(!batch.empty());
 
-    if constexpr(!Multithreaded) {
+    if constexpr(!std::is_base_of_v<multithread_push, TagType>) {
       return push_(sink_, std::move(batch));
     } else {
       using std::swap;
@@ -56,7 +57,7 @@ class merge_concat_push {
       Sink dst = sink_; // Copy.
       swap(dst, sink_); // Reorder sink_ after dst.
 
-      thread_pool::default_pool().publish(
+      tag_.post(
           make_task(
               [](Sink&& dst, merge_batch_type<T>&& batch) {
                 try {
@@ -98,31 +99,34 @@ class merge_concat_push {
   }
 
   Sink sink_;
+  TagType tag_;
 };
 
 ///\brief Converts a batched stream into its reduction.
-template<typename T, typename Sink, typename MergeOp, bool Multithreaded>
+template<typename T, typename Sink, typename MergeOp, typename TagType>
 class merge_reduce_push {
  public:
-  merge_reduce_push(Sink&& sink, MergeOp&& do_merge)
+  merge_reduce_push(Sink&& sink, MergeOp&& do_merge, TagType tag)
   noexcept(std::is_nothrow_move_constructible_v<Sink>
       && std::is_nothrow_move_constructible_v<MergeOp>)
   : sink_(std::move(sink)),
-    do_merge_(std::move(do_merge))
+    do_merge_(std::move(do_merge)),
+    tag_(std::move(tag))
   {}
 
-  merge_reduce_push(const Sink& sink, MergeOp&& do_merge)
+  merge_reduce_push(const Sink& sink, MergeOp&& do_merge, TagType tag)
   noexcept(std::is_nothrow_copy_constructible_v<Sink>
       && std::is_nothrow_move_constructible_v<MergeOp>)
   : sink_(sink),
-    do_merge_(std::move(do_merge))
+    do_merge_(std::move(do_merge)),
+    tag_(std::move(tag))
   {}
 
   auto operator()(merge_batch_type<T>&& batch)
   -> objpipe_errc {
     assert(!batch.empty());
 
-    if constexpr(!Multithreaded) {
+    if constexpr(!std::is_base_of_v<multithread_push, TagType>) {
       return push_(sink_, std::move(batch), do_merge_);
     } else {
       using std::swap;
@@ -130,7 +134,7 @@ class merge_reduce_push {
       Sink dst = sink_; // Copy.
       swap(dst, sink_); // Reorder sink_ after dst.
 
-      thread_pool::default_pool().publish(
+      tag_.post(
           make_task(
               [](Sink&& dst, merge_batch_type<T>&& batch, MergeOp&& do_merge) {
                 try {
@@ -171,6 +175,7 @@ class merge_reduce_push {
 
   Sink sink_;
   MergeOp do_merge_;
+  TagType tag_;
 };
 
 ///\brief Converts a single stream of elements into batches that compare neither less, nor greater.
@@ -950,7 +955,7 @@ class merge_pipe
   template<typename Acceptor, bool Enable = adapt::has_ioc_push<Source, existingthread_push>>
   auto ioc_push(existingthread_push tag, Acceptor&& acceptor) &&
   -> std::enable_if_t<Enable> {
-    using sink_type = merge_concat_push<value_type, std::decay_t<Acceptor>, false>;
+    using sink_type = merge_concat_push<value_type, std::decay_t<Acceptor>, existingthread_push>;
     using impl_type = multiple_merge_batch_push<value_type, sink_type, Less>;
 
     impl_type::start(
@@ -963,7 +968,7 @@ class merge_pipe
   template<typename Acceptor>
   auto ioc_push(singlethread_push tag, Acceptor&& acceptor) &&
   -> void {
-    using sink_type = merge_concat_push<value_type, std::decay_t<Acceptor>, false>;
+    using sink_type = merge_concat_push<value_type, std::decay_t<Acceptor>, singlethread_push>;
     using impl_type = multiple_merge_batch_push<value_type, sink_type, Less>;
 
     impl_type::start(
@@ -976,7 +981,7 @@ class merge_pipe
   template<typename Acceptor>
   auto ioc_push(multithread_push tag, Acceptor&& acceptor) &&
   -> void {
-    using sink_type = merge_concat_push<value_type, std::decay_t<Acceptor>, true>;
+    using sink_type = merge_concat_push<value_type, std::decay_t<Acceptor>, multithread_push>;
     using impl_type = multiple_merge_batch_push<value_type, sink_type, Less>;
 
     impl_type::start(
@@ -1150,7 +1155,7 @@ class merge_reduce_pipe
   template<typename Acceptor, bool Enable = adapt::has_ioc_push<Source, existingthread_push>>
   auto ioc_push(existingthread_push tag, Acceptor&& acceptor) &&
   -> std::enable_if_t<Enable> {
-    using sink_type = merge_reduce_push<value_type, std::decay_t<Acceptor>, do_merge_t<value_type, ReduceOp>, false>;
+    using sink_type = merge_reduce_push<value_type, std::decay_t<Acceptor>, do_merge_t<value_type, ReduceOp>, existingthread_push>;
     using impl_type = multiple_merge_batch_push<value_type, sink_type, Less>;
 
     impl_type::start(
@@ -1163,7 +1168,7 @@ class merge_reduce_pipe
   template<typename Acceptor>
   auto ioc_push(singlethread_push tag, Acceptor&& acceptor) &&
   -> void {
-    using sink_type = merge_reduce_push<value_type, std::decay_t<Acceptor>, do_merge_t<value_type, ReduceOp>, false>;
+    using sink_type = merge_reduce_push<value_type, std::decay_t<Acceptor>, do_merge_t<value_type, ReduceOp>, singlethread_push>;
     using impl_type = multiple_merge_batch_push<value_type, sink_type, Less>;
 
     impl_type::start(
@@ -1176,7 +1181,7 @@ class merge_reduce_pipe
   template<typename Acceptor>
   auto ioc_push(multithread_push tag, Acceptor&& acceptor) &&
   -> void {
-    using sink_type = merge_reduce_push<value_type, std::decay_t<Acceptor>, do_merge_t<value_type, ReduceOp>, true>;
+    using sink_type = merge_reduce_push<value_type, std::decay_t<Acceptor>, do_merge_t<value_type, ReduceOp>, multithread_push>;
     using impl_type = multiple_merge_batch_push<value_type, sink_type, Less>;
 
     impl_type::start(

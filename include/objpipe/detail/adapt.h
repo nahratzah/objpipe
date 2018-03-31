@@ -13,7 +13,6 @@
 #include <objpipe/detail/fwd.h>
 #include <objpipe/detail/peek_op.h>
 #include <objpipe/detail/transport.h>
-#include <objpipe/detail/thread_pool.h>
 #include <objpipe/detail/task.h>
 
 /**
@@ -648,40 +647,38 @@ auto ioc_push(Source&& src, [[maybe_unused]] singlethread_push push_tag, Accepto
   static_assert(std::is_rvalue_reference_v<Source&&>
       && !std::is_const_v<Source&&>,
       "Source must be passed by (non-const) rvalue reference.");
-  thread_pool::default_pool()
-      .publish(
-          make_task(
-              [](Source&& src, std::decay_t<Acceptor>&& acceptor) {
-                try {
-                  for (;;) {
-                    auto tx = adapt::raw_pull(src);
-                    using value_type = typename decltype(tx)::value_type;
+  push_tag.post(
+      make_task(
+          [](Source&& src, std::decay_t<Acceptor>&& acceptor) {
+            try {
+              for (;;) {
+                auto tx = adapt::raw_pull(src);
+                using value_type = typename decltype(tx)::value_type;
 
-                    if (tx.errc() == objpipe_errc::closed) {
-                      break;
-                    } else if (tx.errc() != objpipe_errc::success) {
-                      throw objpipe_error(tx.errc());
-                    } else {
-                      assert(tx.has_value());
-                      objpipe_errc e;
-                      if constexpr(is_invocable_v<std::decay_t<Acceptor>&, typename decltype(tx)::type>)
-                        e = std::invoke(acceptor, std::move(tx).value());
-                      else if constexpr(is_invocable_v<std::decay_t<Acceptor>&, value_type> && std::is_const_v<typename decltype(tx)::type>)
-                        e = std::invoke(acceptor, std::move(tx).by_value().value());
-                      else
-                        e = std::invoke(acceptor, tx.ref());
+                if (tx.errc() == objpipe_errc::closed) {
+                  break;
+                } else if (tx.errc() != objpipe_errc::success) {
+                  throw objpipe_error(tx.errc());
+                } else {
+                  assert(tx.has_value());
+                  objpipe_errc e;
+                  if constexpr(is_invocable_v<std::decay_t<Acceptor>&, typename decltype(tx)::type>)
+                    e = std::invoke(acceptor, std::move(tx).value());
+                  else if constexpr(is_invocable_v<std::decay_t<Acceptor>&, value_type> && std::is_const_v<typename decltype(tx)::type>)
+                    e = std::invoke(acceptor, std::move(tx).by_value().value());
+                  else
+                    e = std::invoke(acceptor, tx.ref());
 
-                      if (e != objpipe_errc::success)
-                        break;
-                    }
-                  }
-                } catch (...) {
-                  acceptor.push_exception(std::current_exception());
+                  if (e != objpipe_errc::success)
+                    break;
                 }
-              },
-              std::move(src),
-              std::forward<Acceptor>(acceptor))
-      );
+              }
+            } catch (...) {
+              acceptor.push_exception(std::current_exception());
+            }
+          },
+          std::move(src),
+          std::forward<Acceptor>(acceptor)));
 }
 
 /**

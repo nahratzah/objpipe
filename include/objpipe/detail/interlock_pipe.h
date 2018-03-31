@@ -11,6 +11,7 @@
 #include <variant>
 #include <objpipe/errc.h>
 #include <objpipe/detail/transport.h>
+#include <objpipe/detail/adapt.h>
 
 namespace objpipe::detail {
 
@@ -333,52 +334,64 @@ class interlock_impl final
   auto front()
   -> transport<front_type> {
     std::unique_lock<std::mutex> lck_{ guard_ };
-    for (;;) {
-      if (exptr_ != nullptr)
-        std::rethrow_exception(exptr_);
-      if (offered_ != nullptr)
-        return transport<front_type>(std::in_place_index<0>, get(lck_));
-      if (writer_count_ == 0)
-        return transport<front_type>(std::in_place_index<1>, objpipe_errc::closed);
-      read_ready_.wait(lck_);
-    }
+    read_ready_.wait(lck_,
+        [&]() {
+          return offered_ != nullptr || exptr_ != nullptr || writer_count_ == 0;
+        });
+    if (exptr_ != nullptr)
+      std::rethrow_exception(exptr_);
+    if (writer_count_ == 0)
+      return transport<front_type>(std::in_place_index<1>, objpipe_errc::closed);
+    return transport<front_type>(std::in_place_index<0>, get(lck_));
   }
 
   auto pop_front()
   -> objpipe_errc {
     std::unique_lock<std::mutex> lck_{ guard_ };
-    while (offered_ == nullptr && exptr_ == nullptr) {
-      if (writer_count_ == 0) return objpipe_errc::closed;
-      read_ready_.wait(lck_);
+    read_ready_.wait(lck_,
+        [&]() {
+          return offered_ != nullptr || exptr_ != nullptr || writer_count_ == 0;
+        });
+    if (offered_ != nullptr) {
+      offered_ = nullptr;
+      lck_.unlock();
+      write_ready_.notify_one();
+
+      // We need to notify all, because an additional write could have enetered
+      // due to us unlocking the mutex.
+      // There will be at most two threads awoken, so should be fine.
+      write_done_.notify_all();
+      return objpipe_errc::success;
     }
 
     if (exptr_ != nullptr)
       std::rethrow_exception(exptr_);
-
-    offered_ = nullptr;
-    lck_.unlock();
-    write_ready_.notify_one();
-    write_done_.notify_one();
-    return objpipe_errc::success;
+    assert(writer_count_ == 0);
+    return objpipe_errc::closed;
   }
 
   auto pull()
   -> transport<pull_type> {
     std::unique_lock<std::mutex> lck_{ guard_ };
-    while (offered_ == nullptr && exptr_ == nullptr) {
-      if (writer_count_ == 0)
-        return transport<pull_type>(std::in_place_index<1>, objpipe_errc::closed);
-      read_ready_.wait(lck_);
-    }
-
+    read_ready_.wait(lck_,
+        [&]() {
+          return offered_ != nullptr || exptr_ != nullptr || writer_count_ == 0;
+        });
     if (exptr_ != nullptr)
       std::rethrow_exception(exptr_);
+    if (writer_count_ == 0)
+      return transport<pull_type>(std::in_place_index<1>, objpipe_errc::closed);
 
+    assert(offered_ != nullptr);
     auto result = transport<pull_type>(std::in_place_index<0>, get(lck_));
     offered_ = nullptr;
     lck_.unlock();
     write_ready_.notify_one();
-    write_done_.notify_one();
+
+    // We need to notify all, because an additional write could have enetered
+    // due to us unlocking the mutex.
+    // There will be at most two threads awoken, so should be fine.
+    write_done_.notify_all();
     return result;
   }
 
@@ -399,7 +412,11 @@ class interlock_impl final
     offered_ = nullptr;
     lck_.unlock();
     write_ready_.notify_one();
-    write_done_.notify_one();
+
+    // We need to notify all, because an additional write could have enetered
+    // due to us unlocking the mutex.
+    // There will be at most two threads awoken, so should be fine.
+    write_done_.notify_all();
     return result;
   }
 
@@ -413,22 +430,20 @@ class interlock_impl final
           return offered_ == nullptr || exptr_ != nullptr || reader_count_ == 0 || acceptor_ != nullptr;
         });
     if (acceptor_ != nullptr) {
+      std::variant<objpipe_errc, interlock_acceptor_intf<T>*> publish_result;
       if constexpr(std::is_const_v<T>)
-        acceptor_->publish(v);
+        publish_result = acceptor_->publish(v);
       else
-        acceptor_->publish(std::move(v));
+        publish_result = acceptor_->publish(std::move(v));
+      if (std::holds_alternative<objpipe_errc>(publish_result) && std::get<objpipe_errc>(publish_result) != objpipe_errc::success)
+        return publish_result;
       return acceptor_;
     }
 
     if (exptr_ != nullptr) return objpipe_errc::bad;
     if (reader_count_ == 0) return objpipe_errc::closed;
-    if (exptr_ != nullptr) return objpipe_errc::closed;
 
-    std::add_pointer_t<T> v_ptr = nullptr;
-    if constexpr(std::is_const_v<T>)
-      v_ptr = std::addressof(v);
-    else
-      v_ptr = std::addressof(static_cast<std::add_lvalue_reference_t<value_type>>(v));
+    const std::add_pointer_t<T> v_ptr = std::addressof(v);
     offered_ = v_ptr;
     read_ready_.notify_one();
     write_done_.wait(lck_,
@@ -461,6 +476,7 @@ class interlock_impl final
     lck_.unlock();
     read_ready_.notify_all();
     write_ready_.notify_all(); // Notify all writers that objpipe went bad.
+    write_done_.notify_all(); // Also notify in-progress writes.
     return objpipe_errc::success;
   }
 
@@ -512,10 +528,12 @@ class interlock_impl final
           acceptor_->publish(*offered_);
         else
           acceptor_->publish(std::move(*offered_));
+        offered_ = nullptr;
       } catch (...) {
-        acceptor_->publish_exception(std::current_exception());
+        acceptor_->publish_exception(exptr_ = std::current_exception());
       }
-      offered_ = nullptr;
+
+      // Pessimistic notify (under a lock), so notify_one() suffices.
       write_done_.notify_one();
     }
 
@@ -548,6 +566,8 @@ class interlock_impl final
         acceptor_->publish_exception(std::current_exception());
       }
       offered_ = nullptr;
+
+      // Pessimistic notify (under a lock), so notify_one() suffices.
       write_done_.notify_one();
     }
 
@@ -669,20 +689,20 @@ class interlock_pipe {
     return ptr_->try_pull();
   }
 
-  constexpr auto can_push([[maybe_unused]] existingthread_push tag) const
+  constexpr auto can_push([[maybe_unused]] const existingthread_push& tag) const
   noexcept
   -> bool {
     return true;
   }
 
-  constexpr auto can_push([[maybe_unused]] multithread_unordered_push tag) const
+  constexpr auto can_push([[maybe_unused]] const multithread_unordered_push& tag) const
   noexcept
   -> bool {
     return true;
   }
 
   template<typename Acceptor>
-  auto ioc_push(existingthread_push tag, Acceptor&& acceptor) &&
+  auto ioc_push(const existingthread_push& tag, Acceptor&& acceptor) &&
   -> void {
     assert(ptr_ != nullptr);
     ptr_->ioc_push(tag, std::forward<Acceptor>(acceptor));
@@ -693,7 +713,7 @@ class interlock_pipe {
   }
 
   template<typename Acceptor>
-  auto ioc_push(multithread_unordered_push tag, Acceptor&& acceptor) &&
+  auto ioc_push(const multithread_unordered_push& tag, Acceptor&& acceptor) &&
   -> void {
     assert(ptr_ != nullptr);
     ptr_->ioc_push(tag, std::forward<Acceptor>(acceptor));
@@ -777,7 +797,7 @@ class interlock_writer {
 
   template<typename Arg>
   auto operator()(Arg&& arg)
-  -> void {
+  -> objpipe_errc {
     assert(ptr_ != nullptr);
     objpipe_errc e = objpipe_errc::success;
     std::visit(
@@ -790,25 +810,7 @@ class interlock_writer {
           }
         },
         ptr_->publish(std::forward<Arg>(arg)));
-    if (e != objpipe_errc::success)
-      throw objpipe_error(e);
-  }
-
-  template<typename Arg>
-  auto operator()(Arg&& arg, objpipe_errc& e)
-  -> void {
-    assert(ptr_ != nullptr);
-    e = objpipe_errc::success;
-    std::visit(
-        [&e, this](auto publish_result) noexcept {
-          if constexpr(std::is_same_v<objpipe_errc, decltype(publish_result)>) {
-            e = publish_result;
-          } else {
-            auto old_ptr = std::exchange(ptr_, publish_result->select_on_writer_copy());
-            if (old_ptr->subtract_writer()) delete old_ptr;
-          }
-        },
-        ptr_->publish(std::forward<Arg>(arg)));
+    return e;
   }
 
   auto push_exception(std::exception_ptr exptr)

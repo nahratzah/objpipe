@@ -121,7 +121,7 @@ class flatten_push {
         }
       }
 
-      thread_pool::default_pool().publish(
+      tag_.post(
           make_task(
               [](Sink&& dst, Collection&& c) {
                 try {
