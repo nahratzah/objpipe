@@ -24,6 +24,7 @@ namespace objpipe::detail {
 /**
  * \brief Iterate over a copied sequence of elements.
  * \implements SourceConcept
+ * \implements IocPushConcept
  * \ingroup objpipe_detail
  *
  * \details

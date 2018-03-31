@@ -583,6 +583,7 @@ class interlock_impl final
 /**
  * \brief Objpipe for interlock.
  * \implements SourceConcept
+ * \implements IocPushConcept
  * \ingroup objpipe_detail
  *
  * \details

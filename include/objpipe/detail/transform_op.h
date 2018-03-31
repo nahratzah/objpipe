@@ -261,6 +261,7 @@ class transform_fn_adapter<Arg, Fn> {
 /**
  * \brief Implements the transform operation.
  * \implements TransformationConcept
+ * \implements IocPushConcept
  * \ingroup objpipe_detail
  *
  * \tparam Source The source on which to operate.

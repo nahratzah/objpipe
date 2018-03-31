@@ -290,6 +290,7 @@ class virtual_impl
 /**
  * \brief An objpipe that hides the source behind an interface.
  * \implements TransformationConcept
+ * \implements IocPushConcept
  * \ingroup objpipe_detail
  *
  * \details

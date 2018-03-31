@@ -856,6 +856,7 @@ class merge_pipe_base {
 /**
  * \brief Merges multiple \ref SourceConcept sources together using a less comparison.
  * \implements SourceConcept
+ * \implements IocPushConcept
  * \ingroup objpipe_detail
  *
  * \details
@@ -1012,6 +1013,7 @@ template<typename Type, typename ReduceOp> class do_merge_t;
 /**
  * \brief Merges multiple \ref SourceConcept sources together using a less comparison, combining those that are equal.
  * \implements SourceConcept
+ * \implements IocPushConcept
  * \ingroup objpipe_detail
  *
  * \details

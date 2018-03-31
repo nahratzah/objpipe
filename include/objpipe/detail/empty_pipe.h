@@ -14,6 +14,7 @@ namespace objpipe::detail {
 /**
  * \brief Empty objpipe.
  * \implements SourceConcept
+ * \implements IocPushConcept
  * \ingroup objpipe_detail
  *
  * \details
