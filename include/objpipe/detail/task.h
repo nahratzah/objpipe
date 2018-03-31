@@ -5,6 +5,8 @@
 ///\ingroup objpipe_detail
 
 #include <type_traits>
+#include <tuple>
+#include <functional>
 
 namespace objpipe::detail {
 
@@ -25,8 +27,12 @@ namespace objpipe::detail {
 template<typename Fn, typename... Args>
 class task {
  public:
+  ///\brief Type returned by the function invocation.
+  using result_type = decltype(std::apply(std::declval<Fn>(), std::declval<std::tuple<Args...>>()));
+
   ///\brief Constructor, creates a new task.
-  template<typename FnArg, typename... ArgsArg, typename = std::enable_if_t<sizeof...(ArgsArg) == sizeof...(Args)>>
+  template<typename FnArg, typename... ArgsArg,
+      typename = std::enable_if_t<!std::is_same_v<task, std::decay_t<FnArg>> && sizeof...(ArgsArg) == sizeof...(Args)>>
   explicit task(FnArg&& fn, ArgsArg&&... args)
   noexcept(std::conjunction_v<
       std::is_nothrow_constructible<Fn, FnArg>,
@@ -50,8 +56,41 @@ class task {
   ///If this method is run a second time, the behaviour is undefined.
   auto operator()()
   noexcept(noexcept(std::apply(std::declval<Fn>(), std::declval<std::tuple<Args...>>())))
-  -> auto {
+  -> result_type {
     return std::apply(std::move(fn_), std::move(args_));
+  }
+
+  ///\brief Wrap the task in a function object.
+  ///\details
+  ///We use a shared pointer to task, as the task isn't copy constructibe,
+  ///but std::function requires this.
+  ///\tparam ResultType The result type of the function. Defaults to ``void``.
+  ///\returns A std::function representing this task.
+  template<typename ResultType = void>
+  auto as_function() &&
+  -> std::enable_if_t<
+      std::is_convertible_v<result_type, ResultType>,
+      std::function<ResultType()>> {
+    if constexpr(std::is_same_v<std::function<ResultType()>, Fn>
+        && sizeof...(Args) == 0) {
+      // Just return fn_, as it qualifies immediately.
+      return std::move(fn_);
+    } else {
+      return std::function<ResultType()>(
+          [](const std::shared_ptr<task>& ptr) -> ResultType {
+            if constexpr(std::is_same_v<void, std::decay_t<ResultType>>)
+              std::invoke(*ptr);
+            else
+              return std::invoke(*ptr);
+          },
+          std::make_unique<task>(std::move(*this)));
+    }
+  }
+
+  ///\brief Allow conversion to std::function.
+  template<typename ResultType, typename = std::enable_if_t<std::is_convertible_v<result_type, ResultType>>>
+  explicit operator std::function<ResultType()>() && {
+    return std::move(*this).template as_function<ResultType>();
   }
 
  private:
