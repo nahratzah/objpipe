@@ -342,7 +342,7 @@ TEST(interlock_push) {
 
   // Method under test.
   const std::vector<std::pair<int, int>> result = std::move(reader)
-      .async()
+      .async(singlethread_push([](auto fn) { CHECK(!"Must use existing thread, not spawn a new one."); }))
       .to_vector()
       .get();
 
@@ -390,7 +390,7 @@ TEST(interlock_push_unordered) {
 
   // Method under test.
   const std::vector<std::pair<int, int>> result = std::move(reader)
-      .async(multithread_unordered_push())
+      .async(multithread_unordered_push([](auto fn) { CHECK(!"Must use existing thread, not spawn a new one."); }))
       .to_vector()
       .get();
 
