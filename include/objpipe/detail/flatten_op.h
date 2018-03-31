@@ -15,7 +15,6 @@
 namespace objpipe::detail {
 
 
-using std::make_move_iterator;
 using std::begin;
 using std::end;
 
@@ -95,8 +94,8 @@ class flatten_push {
     using std::swap;
 
     if constexpr(!std::is_base_of_v<multithread_push, TagType>) {
-      auto b = make_move_iterator(flatten_op_begin_(c));
-      auto e = make_move_iterator(flatten_op_end_(c));
+      auto b = std::make_move_iterator(flatten_op_begin_(c));
+      auto e = std::make_move_iterator(flatten_op_end_(c));
       objpipe_errc error_code = objpipe_errc::success;
 
       while (b != e && error_code == objpipe_errc::success) {
@@ -125,8 +124,8 @@ class flatten_push {
           make_task(
               [](Sink&& dst, Collection&& c) {
                 try {
-                  auto b = make_move_iterator(flatten_op_begin_(c));
-                  auto e = make_move_iterator(flatten_op_end_(c));
+                  auto b = std::make_move_iterator(flatten_op_begin_(c));
+                  auto e = std::make_move_iterator(flatten_op_end_(c));
 
                   objpipe_errc error_code = objpipe_errc::success;
                   while (b != e && error_code == objpipe_errc::success) {
@@ -168,54 +167,78 @@ class flatten_push {
 };
 
 
-template<typename Collection, typename BeginIter, typename EndIter, bool IsReference = std::is_reference_v<Collection>>
+template<typename Collection, bool IsReference = std::is_reference_v<Collection>>
 class flatten_op_store_data {
   static_assert(std::is_reference_v<Collection>);
 
+ private:
+  using begin_iterator =
+      std::decay_t<decltype(flatten_op_begin_(std::declval<std::remove_reference_t<Collection>&>()))>;
+  using end_iterator =
+      std::decay_t<decltype(flatten_op_end_(std::declval<std::remove_reference_t<Collection>&>()))>;
+
+  // If iterator yields non-const lvalue-references, convert them to rvalue-references.
+  static constexpr bool convert_to_move_iterator =
+      !std::is_const_v<typename std::iterator_traits<begin_iterator>::reference>
+      && std::is_lvalue_reference_v<typename std::iterator_traits<begin_iterator>::reference>;
+
+  static_assert(
+      std::is_base_of_v<std::input_iterator_tag, typename std::iterator_traits<begin_iterator>::iterator_category>,
+      "Collection iterator must be an input iterator");
+
  public:
+  using iterator = std::conditional_t<
+      convert_to_move_iterator,
+      std::move_iterator<begin_iterator>,
+      begin_iterator>;
+
   flatten_op_store_data(Collection c)
-  : begin_(make_move_iterator(flatten_op_begin_(c))),
-    end_(make_move_iterator(flatten_op_end_(c)))
+  : begin_(flatten_op_begin_(c)),
+    end_(flatten_op_end_(c))
   {}
 
   flatten_op_store_data(flatten_op_store_data&&) = default;
 
   auto empty() const
-  noexcept(noexcept(std::declval<const BeginIter&>() == std::declval<const EndIter&>()))
+  noexcept(noexcept(std::declval<const begin_iterator&>() == std::declval<const end_iterator&>()))
   -> bool {
-    return begin_ == end_;
+    if constexpr(convert_to_move_iterator)
+      return begin_.base() == end_;
+    else
+      return begin_ == end_;
   }
 
   auto iter()
-  -> BeginIter& {
+  -> iterator& {
     return begin_;
   }
 
  private:
-  BeginIter begin_;
-  EndIter end_;
+  iterator begin_;
+  end_iterator end_;
 };
 
-template<typename Collection, typename BeginIter, typename EndIter>
-class flatten_op_store_data<Collection, BeginIter, EndIter, false> {
+template<typename Collection>
+class flatten_op_store_data<Collection, false> {
  public:
+  using iterator = typename flatten_op_store_data<Collection&, true>::iterator;
+
   flatten_op_store_data(Collection&& c)
   : c_(std::make_unique<Collection>(std::move(c))),
-    begin_(make_move_iterator(flatten_op_begin_(*this->c_))),
-    end_(make_move_iterator(flatten_op_end_(*this->c_)))
+    impl_(*this->c_)
   {}
 
   flatten_op_store_data(flatten_op_store_data&&) = default;
 
   auto empty() const
-  noexcept(noexcept(std::declval<const BeginIter&>() == std::declval<const EndIter&>()))
+  noexcept(noexcept(impl_.empty()))
   -> bool {
-    return begin_ == end_;
+    return impl_.empty();
   }
 
   auto iter()
-  -> BeginIter& {
-    return begin_;
+  -> iterator& {
+    return impl_.iter();
   }
 
  private:
@@ -227,30 +250,17 @@ class flatten_op_store_data<Collection, BeginIter, EndIter, false> {
   ///(example: std::array).
   std::unique_ptr<Collection> c_;
 
-  BeginIter begin_;
-  EndIter end_;
+  flatten_op_store_data<Collection&, true> impl_;
 };
 
 template<typename Collection, typename = void>
 class flatten_op_store {
  private:
   using collection = Collection;
-  using begin_iterator =
-      std::decay_t<decltype(make_move_iterator(flatten_op_begin_(std::declval<collection&>())))>;
-  using end_iterator =
-      std::decay_t<decltype(make_move_iterator(flatten_op_end_(std::declval<collection&>())))>;
-
-  static_assert(
-      std::is_base_of_v<std::input_iterator_tag, typename std::iterator_traits<begin_iterator>::iterator_category>,
-      "Collection iterator must be an input iterator");
-
-  using data_type = flatten_op_store_data<collection, begin_iterator, end_iterator>;
-
-  static constexpr bool noexcept_iter_compare =
-      noexcept(std::declval<const begin_iterator&>() == std::declval<const end_iterator&>());
+  using data_type = flatten_op_store_data<collection>;
 
  public:
-  using transport_type = transport<typename std::iterator_traits<begin_iterator>::reference>;
+  using transport_type = transport<typename std::iterator_traits<typename data_type::iterator>::reference>;
 
   ///\brief Enable pull only when its safe to do so.
   ///\details
@@ -263,30 +273,23 @@ class flatten_op_store {
   ///Otherwise, we conservatively disable pull, in the event that input
   ///iterator advancement invalidates the returned value.
   static constexpr bool enable_pull =
-      !std::is_reference_v<typename std::iterator_traits<begin_iterator>::value_type>
-      || std::is_base_of_v<std::forward_iterator_tag, typename std::iterator_traits<begin_iterator>::value_type>;
+      !std::is_reference_v<typename std::iterator_traits<typename data_type::iterator>::value_type>
+      || std::is_base_of_v<std::forward_iterator_tag, typename std::iterator_traits<typename data_type::iterator>::value_type>;
 
   flatten_op_store(std::add_rvalue_reference_t<collection> c)
   noexcept(std::is_nothrow_constructible_v<data_type, std::add_rvalue_reference_t<collection>>)
   : data_(std::forward<collection>(c))
   {}
 
-  template<bool OmitCollection = std::is_reference_v<collection>>
-  flatten_op_store(std::enable_if_t<!OmitCollection, collection>&& c)
-  noexcept(std::is_nothrow_move_constructible_v<collection>
-      && noexcept(begin_iterator(make_move_iterator(flatten_op_begin_(std::declval<std::remove_reference_t<collection>&>()))))
-      && noexcept(end_iterator(make_move_iterator(flatten_op_end_(std::declval<std::remove_reference_t<collection>&>())))))
-  : data_(make_move_iterator(flatten_op_begin_(c)), make_move_iterator(flatten_op_end_(c)), std::move(c))
-  {}
-
-  auto wait()
-  noexcept(noexcept_iter_compare)
+  auto wait() const
+  noexcept(noexcept(std::declval<const data_type&>().empty()))
   -> objpipe_errc {
     return (data_.empty() ? objpipe_errc::closed : objpipe_errc::success);
   }
 
   auto front()
-  noexcept(noexcept_iter_compare && noexcept(*std::declval<const begin_iterator&>()))
+  noexcept(noexcept(std::declval<const data_type&>().empty())
+      && noexcept(*std::declval<typename data_type::iterator&>()))
   -> transport_type {
     if (data_.empty())
       return transport_type(std::in_place_index<1>, objpipe_errc::closed);
@@ -294,7 +297,8 @@ class flatten_op_store {
   }
 
   auto pop_front()
-  noexcept(noexcept_iter_compare && noexcept(++std::declval<begin_iterator&>()))
+  noexcept(noexcept(std::declval<const data_type&>().empty())
+      && noexcept(++std::declval<typename data_type::iterator&>()))
   -> objpipe_errc {
     if (data_.empty())
       return objpipe_errc::closed;
@@ -304,7 +308,9 @@ class flatten_op_store {
 
   template<bool Enable = enable_pull>
   auto pull()
-  noexcept
+  noexcept(noexcept(std::declval<const data_type&>().empty())
+      && noexcept(*std::declval<typename data_type::iterator&>())
+      && noexcept(++std::declval<typename data_type::iterator&>()))
   -> transport_type {
     if (data_.empty())
       return transport_type(std::in_place_index<1>, objpipe_errc::closed);
@@ -351,8 +357,8 @@ class flatten_op_store<Source, std::enable_if_t<is_adapter_v<std::decay_t<Source
 
   template<bool Enable = enable_pull>
   auto pull()
-  noexcept
-  -> auto {
+  noexcept(noexcept(std::declval<underlying_source&>().pull()))
+  -> transport<std::enable_if_t<Enable, adapt::pull_type<underlying_source>>> {
     return src_.underlying().pull();
   }
 
