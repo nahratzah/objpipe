@@ -168,7 +168,7 @@ class flatten_push {
 };
 
 
-template<typename Collection>
+template<typename Collection, bool IsAdapter = is_adapter_v<std::decay_t<Collection>>>
 class flatten_op_store {
  private:
   using collection = Collection;
@@ -187,6 +187,8 @@ class flatten_op_store {
       std::tuple<begin_iterator, end_iterator, collection>>;
 
  public:
+  using transport_type = transport<typename std::iterator_traits<begin_iterator>::reference>;
+
   ///\brief Enable pull only when its safe to do so.
   ///\details
   ///We can enable pull, if deref() returns by value.
@@ -216,24 +218,21 @@ class flatten_op_store {
   : data_(make_move_iterator(flatten_op_begin_(c)), make_move_iterator(flatten_op_end_(c)), std::move(c))
   {}
 
-  constexpr auto empty() const
-  noexcept(noexcept(std::declval<const begin_iterator&>() == std::declval<const end_iterator&>()))
-  -> bool {
-    return std::get<0>(data_) == std::get<1>(data_);
-  }
-
-  auto deref() const
+  auto front() const
   noexcept(noexcept(*std::declval<const begin_iterator&>()))
-  -> decltype(*std::declval<const begin_iterator&>()) {
-    assert(std::get<0>(data_) != std::get<1>(data_));
-    return *std::get<0>(data_);
+  -> transport_type {
+    if (std::get<0>(data_) == std::get<1>(data_))
+      return transport_type(std::in_place_index<1>, objpipe_errc::closed);
+    return transport_type(std::in_place_index<0>, *std::get<0>(data_));
   }
 
-  auto advance()
+  auto pop_front()
   noexcept(noexcept(++std::declval<begin_iterator&>()))
-  -> void {
-    assert(std::get<0>(data_) != std::get<1>(data_));
+  -> objpipe_errc {
+    if (std::get<0>(data_) == std::get<1>(data_))
+      return objpipe_errc::closed;
     ++std::get<0>(data_);
+    return objpipe_errc::success;
   }
 
  private:
@@ -260,17 +259,11 @@ class flatten_op {
  private:
   using raw_collection_type = adapt::front_type<Source>;
   using store_type = flatten_op_store<raw_collection_type>;
-  using item_type = decltype(std::declval<const store_type&>().deref());
+  using transport_type = typename store_type::transport_type;
 
   static constexpr bool ensure_avail_noexcept =
       noexcept(std::declval<Source&>().front())
-      && noexcept(std::declval<Source&>().pop_front())
-      && noexcept(std::declval<store_type>().empty())
-      && std::is_nothrow_constructible_v<store_type, raw_collection_type>
-      && std::is_nothrow_destructible_v<store_type>
-      && (std::is_lvalue_reference_v<raw_collection_type>
-          || std::is_rvalue_reference_v<raw_collection_type>
-          || std::is_nothrow_move_constructible_v<raw_collection_type>);
+      && std::is_nothrow_constructible_v<store_type, raw_collection_type>;
 
  public:
   constexpr flatten_op(Source&& src)
@@ -298,50 +291,74 @@ class flatten_op {
   }
 
   auto front()
-  noexcept(ensure_avail_noexcept
-      && noexcept(std::declval<store_type&>().deref())
-      && (std::is_lvalue_reference_v<item_type>
-          || std::is_rvalue_reference_v<item_type>
-          || std::is_nothrow_move_constructible_v<item_type>))
-  -> transport<item_type> {
-    const objpipe_errc e = ensure_avail_();
-    if (e == objpipe_errc::success) {
-      pending_pop_ = true;
-      return transport<item_type>(std::in_place_index<0>, active_->deref());
+  noexcept(noexcept(std::declval<flatten_op&>().ensure_avail_())
+      && noexcept(std::declval<flatten_op&>().consume_active_())
+      && noexcept(std::declval<store_type&>().front())
+      && std::is_nothrow_move_constructible_v<transport_type>)
+  -> transport_type {
+    objpipe_errc e;
+    for (e = ensure_avail_();
+        e == objpipe_errc::success;
+        e = ensure_avail_()) {
+      transport_type result = active_->front();
+      if (result.errc() == objpipe_errc::closed) {
+        e = consume_active_();
+        if (e != objpipe_errc::success)
+          return transport_type(std::in_place_index<1>, e);
+      } else
+        return result;
     }
-    return transport<item_type>(std::in_place_index<1>, e);
+
+    return transport_type(std::in_place_index<1>, e);
   }
 
   auto pop_front()
-  noexcept(ensure_avail_noexcept
-      && noexcept(std::declval<store_type&>().advance()))
+  noexcept(noexcept(std::declval<flatten_op&>().ensure_avail_())
+      && noexcept(std::declval<flatten_op&>().consume_active_())
+      && noexcept(std::declval<store_type&>().pop_front()))
   -> objpipe_errc {
-    if (!std::exchange(pending_pop_, false)) {
-      objpipe_errc e = ensure_avail_();
-      if (e != objpipe_errc::success) return e;
+    objpipe_errc e;
+    for (e = ensure_avail_();
+        e == objpipe_errc::success;
+        e = ensure_avail_()) {
+      e = active_->pop_front();
+      if (e == objpipe_errc::closed) {
+        e = consume_active_();
+        if (e != objpipe_errc::success) return e;
+      } else {
+        return e;
+      }
     }
 
-    active_->advance();
-    return objpipe_errc::success;
+    return e;
   }
 
   template<bool Enable = store_type::enable_pull>
   auto pull()
-  noexcept(ensure_avail_noexcept
-      && noexcept(std::declval<store_type&>().deref())
-      && (std::is_lvalue_reference_v<item_type>
-          || std::is_rvalue_reference_v<item_type>
-          || std::is_nothrow_move_constructible_v<item_type>)
-      && noexcept(std::declval<store_type&>().advance()))
-  -> std::enable_if_t<Enable, transport<item_type>> {
-    assert(!pending_pop_);
-    const objpipe_errc e = ensure_avail_();
-    if (e == objpipe_errc::success) {
-      auto result = transport<item_type>(std::in_place_index<0>, active_->deref());
-      active_->advance();
-      return result;
+  noexcept(noexcept(std::declval<flatten_op&>().ensure_avail_())
+      && noexcept(std::declval<flatten_op&>().consume_active_())
+      && noexcept(std::declval<store_type&>().front())
+      && noexcept(std::declval<store_type&>().pop_front())
+      && std::is_nothrow_move_constructible_v<transport_type>)
+  -> std::enable_if_t<Enable, transport_type> {
+    objpipe_errc e;
+    for (e = ensure_avail_();
+        e == objpipe_errc::success;
+        e = ensure_avail_()) {
+      auto result = active_->front();
+      if (result.errc() == objpipe_errc::closed) {
+        consume_active_();
+      } else {
+        if (result.errc() == objpipe_errc::success) {
+          e = active_->pop_front();
+          if (e != objpipe_errc::success)
+            result.emplace(std::in_place_index<1>, e);
+        }
+        return result;
+      }
     }
-    return transport<item_type>(std::in_place_index<1>, e);
+
+    return transport_type(std::in_place_index<1>, e);
   }
 
   template<typename PushTag>
@@ -378,16 +395,7 @@ class flatten_op {
   auto ensure_avail_()
   noexcept(ensure_avail_noexcept)
   -> objpipe_errc {
-    assert(!pending_pop_);
-
-    while (!active_.has_value() || active_->empty()) {
-      if (active_.has_value()) {
-        assert(active_->empty());
-        objpipe_errc e = src_.pop_front();
-        if (e != objpipe_errc::success)
-          return e;
-      }
-
+    if (!active_.has_value()) {
       transport<raw_collection_type> front_val = src_.front();
       if (!front_val.has_value()) {
         assert(front_val.errc() != objpipe_errc::success);
@@ -398,9 +406,16 @@ class flatten_op {
     return objpipe_errc::success;
   }
 
+  auto consume_active_()
+  noexcept(std::is_nothrow_destructible_v<store_type>
+      && noexcept(std::declval<Source&>().pop_front()))
+  -> objpipe_errc {
+    active_.reset();
+    return src_.pop_front();
+  }
+
   Source src_;
   std::optional<store_type> active_;
-  bool pending_pop_ = false;
 };
 
 
