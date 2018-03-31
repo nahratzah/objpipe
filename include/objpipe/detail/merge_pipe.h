@@ -16,10 +16,21 @@
 namespace objpipe::detail {
 
 
+/**
+ * \brief Collection type used to merge batches of elements together.
+ * \ingroup objpipe_detail
+ * \relates merge_concat_push
+ *
+ * \details
+ * We use a list, for its splice operation.
+ *
+ * \tparam T The value type of the merge objpipe.
+ */
 template<typename T>
 using merge_batch_type = std::list<T>;
 
 ///\brief Converts a batched stream of elements into its components.
+///\ingroup objpipe_detail
 template<typename T, typename Sink, bool Multithreaded>
 class merge_concat_push {
  public:

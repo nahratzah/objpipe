@@ -57,19 +57,27 @@ noexcept(std::is_nothrow_constructible_v<adapter_t<std::decay_t<Source>>, Source
 template<typename Source>
 class adapter_iterator {
  public:
+  ///\brief Value type of the iterator.
   using value_type = adapt::value_type<Source>;
+  ///\brief Reference type of the iterator.
   using reference = adapt::pull_type<Source>;
+  ///\brief Distance type of the iterator.
   using difference_type = std::ptrdiff_t;
+  ///\brief Input iterator has no pointer type.
   using pointer = void;
+  ///\brief Iterator category denotes this as an input iterator.
   using iterator_category = std::input_iterator_tag;
 
+  ///\brief Construct an end iterator.
   constexpr adapter_iterator() = default;
 
+  ///\brief Construct an iterator that emits elements from the given source.
   constexpr adapter_iterator(Source& src)
   noexcept
   : src_(std::addressof(src))
   {}
 
+  ///\brief Dereference the iterator.
   auto operator*() const
   -> reference {
     auto t = adapt::raw_pull(*src_);
@@ -80,17 +88,23 @@ class adapter_iterator {
     return std::move(t).value();
   }
 
+  ///\brief Pre-increment operation.
   auto operator++()
   -> adapter_iterator& {
     return *this;
   }
 
+  ///\brief Post-increment operation.
   auto operator++(int)
   noexcept
   -> void {
     ++*this;
   }
 
+  ///\brief Compare iterators for equality.
+  ///\details Iterators only compare equal if they're both end iterators.
+  ///An iterator becomes an end iterator when it is constructed thusly,
+  ///or reaches the end of the objpipe.
   constexpr auto operator==(const adapter_iterator& other) const
   noexcept(noexcept(std::declval<Source&>().wait()))
   -> bool {
@@ -98,6 +112,7 @@ class adapter_iterator {
         && (other.src_ == nullptr || other.src_->wait() == objpipe_errc::closed);
   }
 
+  ///\brief Inequality comparison.
   constexpr auto operator!=(const adapter_iterator& other) const
   noexcept(noexcept(std::declval<Source&>().wait()))
   -> bool {
@@ -105,6 +120,7 @@ class adapter_iterator {
   }
 
  private:
+  ///\brief Underlying source for the iterator.
   Source* src_ = nullptr;
 };
 
@@ -123,13 +139,16 @@ class adapter_iterator {
  * \sa \ref objpipe::reader
  *
  * \bug
+ * \parblock
  * The adapter provides the front(), pop_front(), pull(), etc methods.
  * This necessitates it containing temporary \ref adapter_t::store_ "store variable".
  * Because of this, each intermediate operation creates and destroys this temporary
  * variable.
+ *
  * It dilutes the purpose of the adapter as a move-only builder and may make users
  * erroneously think they are allowed to mix \ref adapter_t::front() and \ref adapter_t::transform() for instance.
  * Consider splitting off those functions into a dedicated type that can be created by a call to ``as_queue()``.
+ * \endparblock
  */
 template<typename Source>
 class adapter_t {
