@@ -557,11 +557,19 @@ As you may imagine, this makes
 tricky to work with, hence it being on my bug list to discard that function.)
 
 \attention
+\parblock
 Note the try-catch in
 \ref SourceConcept::is_pullable "is_pullable()".
 It is required to be noexcept function, so we must handle the exception.
 By returning true in the case of an exception, we instruct a caller to
 evaluate the data in the objpipe, at which point the exception will propagate.
+
+In this case, it's not required, as the exception would be guaranteed to
+be emitted already, on account of the other methods having allowed it to propagate.
+It's mentioned explicitly here, because this is a how-to document.
+(Although if ``DbQueryResult::hasLine()`` could throw an exception, this should be handled
+with this pattern.)
+\endparblock
 
 \note
 An alternative way in which we could make the PeopleSource lazy,
