@@ -217,10 +217,10 @@ class filter_op {
   -> std::enable_if_t<Enable,
       transport<adapt::pull_type<Source>>> {
     if (store_.errc() != objpipe_errc::success)
-      return transport<adapt::try_pull_type<Source>>(std::in_place_index<1>, store_.errc());
+      return transport<adapt::pull_type<Source>>(std::in_place_index<1>, store_.errc());
 
     if (store_.has_value()) {
-      transport<adapt::try_pull_type<Source>> result = std::move(store_);
+      transport<adapt::pull_type<Source>> result = std::move(store_);
       store_.emplace(std::in_place_index<1>, src_.pop_front());
       if (store_.errc() != objpipe_errc::success)
         result.emplace(std::in_place_index<1>, store_.errc());
