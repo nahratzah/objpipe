@@ -1,0 +1,363 @@
+/**
+\page making_a_source How To: Create a new Source.
+
+In many cases, the existing code in objpipe should suffice for your needs.
+I think I have the most common collection types adequately covered (and if
+I didn't, I welcome bug reports).
+
+But, in the case that none of
+\ref objpipe::new_array "objpipe::new_array",
+\ref objpipe::new_callback "objpipe::new_callback",
+\ref objpipe::new_interlock "objpipe::new_interlock",
+or \ref objpipe::of "objpipe::of"
+meets your requirements (or you just enjoy this), this document describes how
+to make your own.
+
+\attention
+The code makes a lot of references to
+\ref objpipe::detail "namespace objpipe::detail".
+I intend to split off the types required to make your own objpipe
+into a separate namespace in the future.
+
+\tableofcontents
+
+\section making_a_source__data_source Data Source for the Examples
+
+In order to create a Source, we first need data over which to iterate.
+
+For this example, we'll be using a table of names, in a database.
+
+The table ``people`` looks like this:
+
+| first_name | last_name |
+| :--------- | :-------- |
+| John       | Doe       |
+| Jane       | Doe       |
+| Chris      | McDonald  |
+| Sherlock   | Holmes    |
+
+We assume there's a class encapsulating those records:
+\code
+struct Person {
+  Person(string firstName, string lastName)
+  : firstName(firstName),
+    lastName(lastName)
+  {}
+
+  string firstName,
+         lastName;
+};
+\endcode
+
+Furthermore, we assume there's a class ``DbConnection`` that encapsulates
+a connection to the database.
+
+\note
+\parblock
+Proper database design rightfully claims we should use IDs as a primary key.
+Also, the names used in this table are in no way a real world example, as
+[Falsehoods Programmers Believe About Names](https://www.kalzumeus.com/2010/06/17/falsehoods-programmers-believe-about-names/)
+describes.
+
+This is a trivial example for the purpose of explaining objpipe sources,
+not a tutorial on how to design (relational) databases,
+nor how to design software.
+\endparblock
+
+\section making_a_source__begin Starting Out
+
+Our \ref SourceConcept "source" will be called ``PeopleSource``.
+We'll have to pass it our database connection, as that is what it'll use
+to traverse the data.
+We also need to get the data from the database, using a query.
+
+\code
+class PeopleSource {
+ public:
+  // SQL query used to get our data.
+  // (We're letting the compiler concatenate those strings for us.)
+  static const string sql =
+      "select first_name, last_name from people "
+      "order by last_name, first_name";
+
+  explicit PeopleSource(DbConnection&& connection)
+  : connection(std::move(connection)),
+    queryResult(this->connection.query(sql))
+  {}
+
+ private:
+  DbConnection connection;
+  DbResult queryResult;
+};
+\endcode
+
+\note
+While we could pass the queryResult as a constructor argument,
+handling it inside the constructor will benefit us later, as we
+can change the position where the query is executed.
+
+\subsection making_a_source__begin_front Implementing front() and pop_front()
+
+Next, we'll need to write \ref SourceConcept::front "front()"
+and \ref SourceConcept "pop_front()" functions.
+
+\code
+#include <objpipe/detail/transport.h>
+#include <objpipe/errc.h>
+
+class PeopleSource {
+ private:
+  // Use a short hand name for the transport type.
+  // transport wraps the entities that traverse through the objpipe.
+  using transport_type = objpipe::detail::transport<Person>;
+
+ public:
+  // SQL query used to get our data.
+  // (We're letting the compiler concatenate those strings for us.)
+  static const string sql =
+      "select first_name, last_name from people "
+      "order by last_name, first_name";
+
+  explicit PeopleSource(DbConnection&& connection)
+  : connection(std::move(connection)),
+    queryResult(this->connection.query(sql))
+  {}
+
+  transport_type front() {
+    if (queryResult.hasLine()) {
+      return transport_type(
+          std::in_place_index<0>,
+          Person(queryResult["first_name"], queryResult["last_name"]));
+    } else {
+      return transport_type(
+          std::in_place_index<1>,
+          objpipe::objpipe_errc::closed);
+    }
+  }
+
+  objpipe::objpipe_errc pop_front() {
+    if (queryResult.hasLine()) {
+      queryResult.advance();
+      return objpipe::objpipe_errc::success;
+    } else {
+      return objpipe::objpipe_errc::closed;
+    }
+  }
+
+ private:
+  DbConnection connection;
+  DbResult queryResult;
+};
+\endcode
+
+As we can see,
+\ref SourceConcept::front "front()"
+returns the line at the start of the objpipe.
+And
+\ref SourceConcept::pop_front "pop_front()"
+advances the objpipe forward.
+
+It is valid to call
+\ref SourceConcept::pop_front "pop_front()"
+without first issueing a call to
+\ref SourceConcept::front "front()",
+which is used to discard elements quickly without
+traversing them.
+
+\note
+\parblock
+In this case, the queryResult encapsulates the current line for us.
+
+If the query result returned line objects and advanced on its own,
+similar to a source called with \ref SourceConcept::pull "pull()",
+we would have to create a temporary that declared if
+\ref SourceConcept::front "front()"
+had been called.
+
+The
+\ref SourceConcept::pop_front "pop_front()" method would then need to call
+\ref SourceConcept::front "front()"
+only if that temporary had not been set, clearing it in the process.
+
+\code
+class PeopleSource {
+  // (Omitting parts that are the same.)
+
+ public:
+  transport_type front() {
+    if (queryResult.hasNext()) {
+      auto line = queryResult.next(); // Retrieve result and advances.
+      qResultHasAdvanced = true; // Mark that we have already advanced.
+      return transport_type(
+          std::in_place_index<0>,
+          Person(line["first_name"], line["last_name"]));
+    } else {
+      return transport_type(
+          std::in_place_index<1>,
+          objpipe::objpipe_errc::closed);
+    }
+  }
+
+  objpipe::objpipe_errc pop_front() {
+    if (!qResultHasAdvanced) {
+      // pop_front() called without preceding call to front().
+
+      if (!queryResult.hasNext())
+        return objpipe::objpipe_errc::closed;
+
+      (void)queryResult.next(); // Advance, while discarding result.
+    } else {
+      // pop_front() called immediately after call to front().
+      // front() will have advanced the cursor already, so we skip doing that.
+      qResultHasAdvanced = false;
+    }
+    return objpipe::objpipe_errc::success;
+  }
+
+ private:
+  // This is true if front() has already advanced the queryResult.
+  // pop_front() must advance the query result if and only if front()
+  // has not been called before it.
+  bool qResultHasAdvanced = false;
+\endcode
+
+For the purpose of this example, we're going to assume queryResult encapsulates
+the line for us, as it's easier to understand.
+\endparblock
+
+\subsection making_a_source__wait_pullable Implementing wait() and is_pullable()
+
+To complete satisfying the requirements for the
+\ref SourceConcept "source concept",
+we need to supply implementations of
+\ref SourceConcept::is_pullable "is_pullable()"
+and
+\ref SourceConcept::wait "wait()".
+
+\code
+#include <objpipe/detail/transport.h>
+#include <objpipe/errc.h>
+
+class PeopleSource {
+ private:
+  // Use a short hand name for the transport type.
+  // transport wraps the entities that traverse through the objpipe.
+  using transport_type = objpipe::detail::transport<Person>;
+
+ public:
+  // SQL query used to get our data.
+  // (We're letting the compiler concatenate those strings for us.)
+  static const string sql =
+      "select first_name, last_name from people "
+      "order by last_name, first_name";
+
+  explicit PeopleSource(DbConnection&& connection)
+  : connection(std::move(connection)),
+    queryResult(this->connection.query(sql))
+  {}
+
+  bool is_pullable() const noexcept {
+    return queryResult.hasLine();
+  }
+
+  objpipe::objpipe_errc wait() {
+    if (queryResult.hasLine())
+      return objpipe::objpipe_errc::success;
+    else // No more data.
+      return objpipe::objpipe_errc::closed;
+  }
+
+  transport_type front() {
+    if (queryResult.hasLine()) {
+      return transport_type(
+          std::in_place_index<0>,
+          Person(queryResult["first_name"], queryResult["last_name"]));
+    } else {
+      return transport_type(
+          std::in_place_index<1>,
+          objpipe::objpipe_errc::closed);
+    }
+  }
+
+  objpipe::objpipe_errc pop_front() {
+    if (queryResult.hasLine()) {
+      queryResult.advance();
+      return objpipe::objpipe_errc::success;
+    } else {
+      return objpipe::objpipe_errc::closed;
+    }
+  }
+
+ private:
+  DbConnection connection;
+  DbResult queryResult;
+};
+\endcode
+
+The
+\ref SourceConcept::is_pullable "is_pullable()"
+method simply indicates that the PeopleSource can only be pulled from
+if there is more data available.
+If a thread was supplying data, it would test if the thread was live.
+
+The
+\ref SourceConcept::wait "wait()"
+method is used to test if the end of the objpipe has been reached,
+without consuming data.
+The
+\ref objpipe::objpipe_errc "error code"
+it returns should be the same as the error code that the next call to
+\ref SourceConcept::front "front()"
+would store in its transport result.
+(Successful calls to
+\ref SourceConcept::front "front()"
+return a value and thus have a
+\ref objpipe::objpipe_errc::success "success"
+error code.)
+
+\attention
+\parblock
+If the next call to
+\ref SourceConcept::front "front()"
+would throw an exception, the
+\ref SourceConcept::wait "wait()"
+method is expected to return
+\ref objpipe::objpipe_errc::success "success"
+regardless.
+
+Alternatively, it's fine for
+\ref SourceConcept::wait "wait()"
+to throw the exception instead.
+\endparblock
+
+\subsection making_a_source__basics_done Wrapping Up
+
+That's all there is to implementing a
+\ref SourceConcept "source".
+The only remaining task is to make this nicely accessible and usable.
+
+For this, we'll create a global frunction:
+
+\code
+auto newObjpipeOfPeople() {
+  return objpipe::detail::adapter(
+      PeopleSource(DbConnection::connect()));
+}
+\endcode
+
+The
+\ref objpipe::detail::adapter objpipe::detail::adapter()
+function takes a source and wraps it inside an
+\ref objpipe::detail::adapter_t "adapter_t".
+The result is an objpipe, complete with decorators etc to perform
+transformations, filtering, etc:
+
+\code
+vector<string> findFirstNamesForLastName(string lastName) {
+  return newObjpipeOfPeople()
+      .filter([&lastName](const Person& person) { return person.lastName == lastName; })
+      .transform(&Person::firstName)
+      .to_vector();
+}
+\endcode
+ */
