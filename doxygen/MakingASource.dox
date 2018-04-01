@@ -360,4 +360,165 @@ vector<string> findFirstNamesForLastName(string lastName) {
       .to_vector();
 }
 \endcode
+
+\section making_a_source__lazy Making the PeopleSource Lazy
+
+All sources included with objpipe, are lazy starting.
+This means that the code to start the evaluation is not run until it is needed
+(in other words, it is deferred until the first data access method on the
+\ref SourceConcept "source"
+is called).
+The exception is that, since a
+\ref SourceConcept "source"
+owns its data (either shared, or exclusively),
+it may have to create an initial copy of a dataset,
+such as is done by the
+\ref objpipe::detail::array_pipe "array pipe".
+
+The benefit of this approach, is that composition of multiple sources is fast.
+For example, creating a source that concatenates multiple sources, will be quick
+to construct and will consequently have its first value available without
+requiring a large startup time.
+It also makes it cheap to destroy an unstarted objpipe, so there's less need for
+optimizing around failure cases.
+
+In our PeopleSource, we would thus have to defer the query to the database.
+For purpose of simplicity, we'll use a
+[std::future](http://en.cppreference.com/w/cpp/thread/future).
+
+\code
+#include <objpipe/detail/transport.h>
+#include <objpipe/errc.h>
+#include <future>
+
+class PeopleSource {
+ private:
+  // Use a short hand name for the transport type.
+  // transport wraps the entities that traverse through the objpipe.
+  using transport_type = objpipe::detail::transport<Person>;
+
+ public:
+  // SQL query used to get our data.
+  // (We're letting the compiler concatenate those strings for us.)
+  static const string sql =
+      "select first_name, last_name from people "
+      "order by last_name, first_name";
+
+  explicit PeopleSource(DbConnection&& connection)
+  : connection(std::move(connection)),
+    queryResult(std::async(launch::deferred, &PeopleSource::makeQueryResult, this))
+  {}
+
+  bool is_pullable() const noexcept {
+    try {
+      future_status status = queryResult.wait_for(std::chrono::seconds(0));
+      if (status == future_status::ready)
+        return queryResult.get().hasLine();
+      else
+        return true;
+    } catch (...) {
+      return true;
+    }
+  }
+
+  objpipe::objpipe_errc wait() {
+    if (queryResult.get().hasLine())
+      return objpipe::objpipe_errc::success;
+    else // No more data.
+      return objpipe::objpipe_errc::closed;
+  }
+
+  transport_type front() {
+    if (queryResult.get().hasLine()) {
+      return transport_type(
+          std::in_place_index<0>,
+          Person(queryResult.get()["first_name"], queryResult.get()["last_name"]));
+    } else {
+      return transport_type(
+          std::in_place_index<1>,
+          objpipe::objpipe_errc::closed);
+    }
+  }
+
+  objpipe::objpipe_errc pop_front() {
+    if (queryResult.get().hasLine()) {
+      queryResult.get().advance();
+      return objpipe::objpipe_errc::success;
+    } else {
+      return objpipe::objpipe_errc::closed;
+    }
+  }
+
+ private:
+  future<DbResult> makeQueryResult() {
+    return connection.query(sql);
+  }
+
+  DbConnection connection;
+  future<DbResult> queryResult;
+};
+\endcode
+
+The changes are pretty small:
+- change ``queryResult`` to be a ``future<DbResult>``,
+- change anything accessing queryResult to use the future dereference operation,
+- change the constructor to create a *deferred* future.
+
+By creating a deferred future, we don't require an additional thread.
+Since creating a thread for deferred startup would be surprising behaviour
+to anyone using our PeopleSource,
+we shouldn't create a thread to handle this.
+
+\note
+We use
+[std::future](http://en.cppreference.com/w/cpp/thread/future)
+and not
+[std::shared_future](http://en.cppreference.com/w/cpp/thread/shared_future)
+as the queryResult is mutable.
+Also,
+\ref SourceConcept "sources"
+are not copy constructible, in spirit, as they model the ongoing state of a traversal.
+
+The most notable change is in
+\ref SourceConcept::is_pullable "is_pullable()".
+We don't evaluate the future in this method, instead opting to return ``true``
+for the unstarted case.
+Since
+\ref SourceConcept::is_pullable "is_pullable()"
+is allowed to provide false positives, this is fine.
+\n
+(The reason
+\ref SourceConcept::is_pullable "is_pullable()"
+is allowed to yield false positives,
+is that it answers if, at some point in the future, in a hypothetical universe,
+the next call to
+\ref SourceConcept::front "front()"
+would succeed.
+Since it's potentially possible for the table to not be empty at this point,
+the answer is: yes, it could.
+As you may imagine, this makes
+\ref SourceConcept::is_pullable "is_pullable()"
+tricky to work with, hence it being on my bug list to discard that function.)
+
+\attention
+Note the try-catch in
+\ref SourceConcept::is_pullable "is_pullable()".
+It is required to be noexcept function, so we must handle the exception.
+By returning true in the case of an exception, we instruct a caller to
+evaluate the data in the objpipe, at which point the exception will propagate.
+
+\note
+An alternative way in which we could make the PeopleSource lazy,
+is by using a single element objpipe and transform operation:
+\code
+objpipe::of(std::move(connection))
+    // Create our non-lazy source from this connection.
+    .transform(
+        [](DbConnection&& connection) -> {
+          return PeopleSource(std::move(connection));
+        })
+    // Iterate over the elements in the source.
+    .iterate();
+\endcode
+
  */
