@@ -1,5 +1,6 @@
 /**
 \interface IocPushConcept
+\extends SourceConcept
 \brief Inversion of control.
 \ingroup objpipe_concepts
 
@@ -9,6 +10,32 @@ a source to drive processing of elements.
 
 The basic concept is that a source will push its elements into an
 \ref IocAcceptorConcept "acceptor".
+
+IOC Push implementations are usually not accessed directly, but instead
+are wrapped inside an \ref objpipe::detail::async_adapter_t "async adapter".
+This in turn is constructed using \ref objpipe::detail::adapter_t::async "adapter_t::async()".
+
+Note that there is hardly ever a reason to specialize this concept for
+\ref objpipe::singlethread_push "singlethread_push",
+as \ref objpipe::detail::adapt::ioc_push "adapt::ioc_push" contains handling
+for creating a thread if need be.
+Instead, this is usually implicitly specialized by implementing
+\ref objpipe::existingthread_push "existingthread_push",
+which is a base of
+\ref objpipe::singlethread_push "singlethread_push".
+
+Similarly, you should only specialize
+\ref objpipe::multithread_unordered_push "multithread_unordered_push",
+if you can make good use of the lack of ordering constraint.
+Usually, you should just be implementing
+\ref objpipe::multithread_push "multithread_push",
+which is then used via inheritance.
+(An example of a case where
+\ref objpipe::multithread_unordered_push "multithread_unordered_push"
+is significantly faster, is for \ref objpipe::detail::merge_pipe "merge_pipe",
+which can drop its ordering constraint due to
+\ref objpipe::multithread_unordered_push "multithread_unordered_push"
+being unconstrained.)
  */
 
 /**
@@ -23,13 +50,6 @@ Objpipe has four push policies:
 - \ref objpipe::multithread_unordered_push "multithread_unordered_push": allows for multiple threads to cooperate in pushing values, dropping any ordering constraints.
 
 The IocPush concept should only specialize implementations which it can support.
-
-Note that the push policies use inheritance and that the following implications must be satisfied:
-\f{align*}{
-\mathtt{can\_push}(\mathtt{existingthread\_push}) &\implies \mathtt{can\_push}(\mathtt{singlethread\_push})           \\
-\mathtt{can\_push}(\mathtt{singlethread\_push})   &\implies \mathtt{can\_push}(\mathtt{multithread\_push})            \\
-\mathtt{can\_push}(\mathtt{multithread\_push})    &\implies \mathtt{can\_push}(\mathtt{multithread\_unordered\_push}) \\
-\f}
  */
 
 /**
@@ -38,6 +58,13 @@ Note that the push policies use inheritance and that the following implications 
 \brief Test if the given Push Policy can be executed by the implementation.
 \details
 This function is an extra check to disable a push policy if it is not runnable.
+
+Note that the push policies use inheritance and that the following implications must be satisfied:
+\f{align*}{
+\mathtt{can\_push}(\mathtt{existingthread\_push}) &\implies \mathtt{can\_push}(\mathtt{singlethread\_push})           \\
+\mathtt{can\_push}(\mathtt{singlethread\_push})   &\implies \mathtt{can\_push}(\mathtt{multithread\_push})            \\
+\mathtt{can\_push}(\mathtt{multithread\_push})    &\implies \mathtt{can\_push}(\mathtt{multithread\_unordered\_push}) \\
+\f}
  */
 
 /**
