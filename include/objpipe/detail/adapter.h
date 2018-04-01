@@ -746,7 +746,7 @@ class adapter_t {
     std::optional<value_type> result;
 
     for (;;) {
-      transport<adapt::pull_type<Source>> v = src_.pull();
+      transport<adapt::pull_type<Source>> v = adapt::raw_pull(src_);
       if (!v.has_value()) {
         assert(v.errc() != objpipe_errc::success);
         if (v.errc() == objpipe_errc::closed) break;
@@ -778,7 +778,7 @@ class adapter_t {
     std::optional<value_type> result;
 
     for (;;) {
-      transport<adapt::pull_type<Source>> v = src_.pull();
+      transport<adapt::pull_type<Source>> v = adapt::raw_pull(src_);
       if (!v.has_value()) {
         assert(v.errc() != objpipe_errc::success);
         if (v.errc() == objpipe_errc::closed) break;
