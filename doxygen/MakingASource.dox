@@ -31,10 +31,9 @@ The table ``people`` looks like this:
 
 | first_name | last_name |
 | :--------- | :-------- |
-| John       | Doe       |
-| Jane       | Doe       |
-| Chris      | McDonald  |
 | Sherlock   | Holmes    |
+| John       | Watson    |
+| Irene      | Adler     |
 
 We assume there's a class encapsulating those records:
 \code
@@ -353,12 +352,14 @@ The result is an objpipe, complete with decorators etc to perform
 transformations, filtering, etc:
 
 \code
-vector<string> findFirstNamesForLastName(string lastName) {
+string findLastNamesForFirstName(string firstName) {
   return newObjpipeOfPeople()
-      .filter([&lastName](const Person& person) { return person.lastName == lastName; })
-      .transform(&Person::firstName)
-      .to_vector();
+      .filter([&firstName](const Person& person) { return person.firstName == firstName; })
+      .transform(&Person::lastName)
+      .pull(); // Throw objpipe::objpipe_error(objpipe_errc::closed) if not found
 }
+
+string irenesLastName = findLastNamesForFirstName("Irene"); // "Adler"
 \endcode
 
 \section making_a_source__pull Adding the Pull Method
