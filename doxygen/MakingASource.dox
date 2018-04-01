@@ -361,6 +361,62 @@ vector<string> findFirstNamesForLastName(string lastName) {
 }
 \endcode
 
+\section making_a_source__pull Adding the Pull Method
+
+The
+\ref SourceConcept "source concept"
+allows for an optional
+\ref SourceConcept::pull "pull()"
+member function.
+This member function should only be implemented if it is more efficient than
+calling
+\ref SourceConcept::front "front()"
+followed by
+\ref SourceConcept::pop_front "pop_front()".
+
+An example of a case where it's more efficient, is if references
+returned by
+\ref SourceConcept::front "front()"
+stay valid beyond a call to
+\ref SourceConcept::pop_front "pop_front()".
+Due to the reference invalidating property of
+\ref SourceConcept::pop_front "pop_front()",
+objpipe normally has to make a copy of such a value.
+
+\code
+class PeopleSource {
+  // Note: omitting already mentioned code bits
+
+ public:
+  transport_type pull() {
+    if (queryResult.hasLine()) {
+      transport_type result = transport_type(
+          std::in_place_index<0>,
+          Person(queryResult["first_name"], queryResult["last_name"]));
+      queryResult.advance();
+      return result;
+    } else {
+      return transport_type(
+          std::in_place_index<1>,
+          objpipe::objpipe_errc::closed);
+    }
+  }
+};
+\endcode
+
+\note
+\parblock
+The result type of
+\ref SourceConcept::pull "pull()"
+does not have to be exactly the same as the result type of
+\ref SourceConcept::front "front()",
+but must be similar.
+
+In particular, the *value type* of both has to be the same,
+where *value type* is defined as:
+``std::remove_cv_t<std::remove_reference_t<transport_type::type>>``.
+\endparblock
+
 \section making_a_source__lazy Making the PeopleSource Lazy
 
 All sources included with objpipe, are lazy starting.
