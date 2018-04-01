@@ -578,7 +578,7 @@ is by using a single element objpipe and transform operation:
 objpipe::of(std::move(connection))
     // Create our non-lazy source from this connection.
     .transform(
-        [](DbConnection&& connection) -> {
+        [](DbConnection&& connection) {
           return PeopleSource(std::move(connection));
         })
     // Iterate over the elements in the source.
