@@ -959,7 +959,7 @@ class merge_pipe
     using impl_type = multiple_merge_batch_push<value_type, sink_type, Less>;
 
     impl_type::start(
-        sink_type(std::forward<Acceptor>(acceptor)),
+        sink_type(std::forward<Acceptor>(acceptor), tag),
         tag,
         std::move(this->less_),
         std::move(*this).get_queue());
@@ -972,7 +972,7 @@ class merge_pipe
     using impl_type = multiple_merge_batch_push<value_type, sink_type, Less>;
 
     impl_type::start(
-        sink_type(std::forward<Acceptor>(acceptor)),
+        sink_type(std::forward<Acceptor>(acceptor), tag),
         tag,
         std::move(this->less_),
         std::move(*this).get_queue());
@@ -985,7 +985,7 @@ class merge_pipe
     using impl_type = multiple_merge_batch_push<value_type, sink_type, Less>;
 
     impl_type::start(
-        sink_type(std::forward<Acceptor>(acceptor)),
+        sink_type(std::forward<Acceptor>(acceptor), tag),
         singlethread_push(),
         std::move(this->less_),
         std::move(*this).get_queue());
@@ -1159,7 +1159,7 @@ class merge_reduce_pipe
     using impl_type = multiple_merge_batch_push<value_type, sink_type, Less>;
 
     impl_type::start(
-        sink_type(std::forward<Acceptor>(acceptor), std::move(do_merge_)),
+        sink_type(std::forward<Acceptor>(acceptor), std::move(do_merge_), tag),
         tag,
         std::move(this->less_),
         std::move(*this).get_queue());
@@ -1172,7 +1172,7 @@ class merge_reduce_pipe
     using impl_type = multiple_merge_batch_push<value_type, sink_type, Less>;
 
     impl_type::start(
-        sink_type(std::forward<Acceptor>(acceptor), std::move(do_merge_)),
+        sink_type(std::forward<Acceptor>(acceptor), std::move(do_merge_), tag),
         tag,
         std::move(this->less_),
         std::move(*this).get_queue());
@@ -1185,7 +1185,7 @@ class merge_reduce_pipe
     using impl_type = multiple_merge_batch_push<value_type, sink_type, Less>;
 
     impl_type::start(
-        sink_type(std::forward<Acceptor>(acceptor), std::move(do_merge_)),
+        sink_type(std::forward<Acceptor>(acceptor), std::move(do_merge_), tag),
         singlethread_push(),
         std::move(this->less_),
         std::move(*this).get_queue());
