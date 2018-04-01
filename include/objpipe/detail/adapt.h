@@ -549,7 +549,7 @@ template<typename Source, typename Acceptor>
 auto ioc_push(Source&& src, existingthread_push push_tag, Acceptor&& acceptor)
 -> std::enable_if_t<has_ioc_push<std::decay_t<Source>, existingthread_push>> {
   static_assert(std::is_rvalue_reference_v<Source&&>
-      && !std::is_const_v<Source&&>,
+      && !std::is_const_v<Source>,
       "Source must be passed by (non-const) rvalue reference.");
   static_assert(std::is_move_constructible_v<std::decay_t<Acceptor>>,
       "Acceptor must be move constructible.");
@@ -572,7 +572,7 @@ template<typename Source, typename Acceptor>
 auto ioc_push(Source&& src, singlethread_push push_tag, Acceptor&& acceptor)
 -> std::enable_if_t<has_ioc_push<std::decay_t<Source>, singlethread_push>> {
   static_assert(std::is_rvalue_reference_v<Source&&>
-      && !std::is_const_v<Source&&>,
+      && !std::is_const_v<Source>,
       "Source must be passed by (non-const) rvalue reference.");
   static_assert(std::is_move_constructible_v<std::decay_t<Acceptor>>,
       "Acceptor must be move constructible.");
@@ -595,7 +595,7 @@ template<typename Source, typename Acceptor>
 auto ioc_push(Source&& src, multithread_push push_tag, Acceptor&& acceptor)
 -> std::enable_if_t<has_ioc_push<std::decay_t<Source>, multithread_push>> {
   static_assert(std::is_rvalue_reference_v<Source&&>
-      && !std::is_const_v<Source&&>,
+      && !std::is_const_v<Source>,
       "Source must be passed by (non-const) rvalue reference.");
   static_assert(std::is_copy_constructible_v<std::decay_t<Acceptor>>,
       "Acceptor must be copy constructible.");
@@ -620,7 +620,7 @@ template<typename Source, typename Acceptor>
 auto ioc_push(Source&& src, multithread_unordered_push push_tag, Acceptor&& acceptor)
 -> std::enable_if_t<has_ioc_push<std::decay_t<Source>, multithread_unordered_push>> {
   static_assert(std::is_rvalue_reference_v<Source&&>
-      && !std::is_const_v<Source&&>,
+      && !std::is_const_v<Source>,
       "Source must be passed by (non-const) rvalue reference.");
   static_assert(std::is_copy_constructible_v<std::decay_t<Acceptor>>,
       "Acceptor must be copy constructible.");
@@ -645,7 +645,7 @@ template<typename Source, typename Acceptor>
 auto ioc_push(Source&& src, [[maybe_unused]] singlethread_push push_tag, Acceptor&& acceptor)
 -> std::enable_if_t<!has_ioc_push<std::decay_t<Source>, singlethread_push>> {
   static_assert(std::is_rvalue_reference_v<Source&&>
-      && !std::is_const_v<Source&&>,
+      && !std::is_const_v<Source>,
       "Source must be passed by (non-const) rvalue reference.");
   push_tag.post(
       make_task(
@@ -664,7 +664,7 @@ auto ioc_push(Source&& src, [[maybe_unused]] singlethread_push push_tag, Accepto
                   objpipe_errc e;
                   if constexpr(is_invocable_v<std::decay_t<Acceptor>&, typename decltype(tx)::type>)
                     e = std::invoke(acceptor, std::move(tx).value());
-                  else if constexpr(is_invocable_v<std::decay_t<Acceptor>&, value_type> && std::is_const_v<typename decltype(tx)::type>)
+                  else if constexpr(is_invocable_v<std::decay_t<Acceptor>&, value_type> && std::is_const_v<std::remove_reference_t<typename decltype(tx)::type>>)
                     e = std::invoke(acceptor, std::move(tx).by_value().value());
                   else
                     e = std::invoke(acceptor, tx.ref());
@@ -694,7 +694,7 @@ template<typename Source, typename Acceptor>
 auto ioc_push(Source&& src, [[maybe_unused]] existingthread_push push_tag, Acceptor&& acceptor)
 -> std::enable_if_t<!has_ioc_push<std::decay_t<Source>, existingthread_push>> {
   static_assert(std::is_rvalue_reference_v<Source&&>
-      && !std::is_const_v<Source&&>,
+      && !std::is_const_v<Source>,
       "Source must be passed by (non-const) rvalue reference.");
   throw objpipe_error(objpipe_errc::no_thread);
 }
