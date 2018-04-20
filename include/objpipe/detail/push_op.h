@@ -882,6 +882,21 @@ class async_adapter_t {
   {}
 
   /**
+   * \brief Sink values into an \ref IocAcceptorConcept acceptor.
+   * \details
+   * Values are emitted into the acceptor, according to the push policy.
+   * \throws objpipe_error if the push operation cannot be performed under the given constraints.
+   */
+  template<typename Acceptor>
+  auto push(Acceptor&& acceptor)
+  -> void {
+    adapt::ioc_push(
+        std::move(src_),
+        std::move(push_tag_),
+        std::forward<Acceptor>(acceptor));
+  }
+
+  /**
    * \brief Perform a reduction.
    * \details
    * The reduction is described by the four arguments to this function,
