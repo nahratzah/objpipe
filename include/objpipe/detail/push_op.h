@@ -888,7 +888,7 @@ class async_adapter_t {
    * \throws objpipe_error if the push operation cannot be performed under the given constraints.
    */
   template<typename Acceptor>
-  auto push(Acceptor&& acceptor)
+  auto push(Acceptor&& acceptor) &&
   -> void {
     adapt::ioc_push(
         std::move(src_),
@@ -915,7 +915,7 @@ class async_adapter_t {
    * \returns A future for the result of the reduction.
    */
   template<typename Init, typename Acceptor, typename Merger, typename Extractor>
-  auto reduce(Init&& init, Acceptor&& acceptor, [[maybe_unused]] Merger&& merger, Extractor&& extractor)
+  auto reduce(Init&& init, Acceptor&& acceptor, [[maybe_unused]] Merger&& merger, Extractor&& extractor) &&
   -> std::future<std::remove_cv_t<std::remove_reference_t<decltype(std::declval<Extractor&>()(std::declval<Init>()()))>>> {
     static_assert(is_invocable_v<const std::decay_t<Init>&>,
         "Init must be invocable, returning a reducer state.");
@@ -942,9 +942,7 @@ class async_adapter_t {
         std::promise<result_type> p;
         std::future<result_type> f = p.get_future();
 
-        adapt::ioc_push(
-            std::move(src_),
-            std::move(push_tag_),
+        std::move(*this).push(
             adapt_async::promise_reducer<value_type, std::decay_t<Init>, std::decay_t<Acceptor>, std::decay_t<Merger>, std::decay_t<Extractor>>(std::move(p), std::forward<Init>(init), std::forward<Acceptor>(acceptor), std::forward<Merger>(merger), std::forward<Extractor>(extractor)).new_state(push_tag_));
 
         return f;
@@ -1011,11 +1009,11 @@ class async_adapter_t {
   ///\brief Reduce operation.
   ///\note \p init is a value.
   template<typename Init, typename Acceptor>
-  auto reduce(Init&& init, Acceptor&& acceptor)
+  auto reduce(Init&& init, Acceptor&& acceptor) &&
   -> std::future<std::remove_cv_t<std::remove_reference_t<Init>>> {
     using result_type = std::remove_cv_t<std::remove_reference_t<Init>>;
 
-    return reduce(
+    return std::move(*this).reduce(
         [init] { return init; },
         [acceptor](auto&& x, auto&& y) {
           std::invoke(acceptor, x, y);
@@ -1034,7 +1032,7 @@ class async_adapter_t {
   -> std::future<std::vector<value_type, Alloc>> {
     using result_type = std::vector<value_type, Alloc>;
 
-    return reduce(
+    return std::move(*this).reduce(
         [alloc]() { return result_type(alloc); },
         [](result_type& vector, auto&& v) {
           vector.push_back(std::forward<decltype(v)>(v));
@@ -1064,7 +1062,7 @@ class async_adapter_t {
       bool Enable = !std::is_base_of_v<multithread_push, PushTag> || std::is_base_of_v<multithread_unordered_push, PushTag>>
   auto copy(OutputIterator&& out) &&
   -> std::enable_if_t<Enable, std::future<void>> {
-    return reduce(
+    return std::move(*this).reduce(
         [out]() { return out; },
         [](std::decay_t<OutputIterator>& out, auto&& v) {
           *out++ = std::forward<decltype(v)>(v);
@@ -1089,7 +1087,7 @@ class async_adapter_t {
       bool Enable = !std::is_base_of_v<multithread_push, PushTag> || std::is_base_of_v<multithread_unordered_push, PushTag>>
   auto for_each(Fn&& fn) &&
   -> std::enable_if_t<Enable, std::future<void>> {
-    return reduce(
+    return std::move(*this).reduce(
         [fn]() { return fn; },
         [](std::decay_t<Fn>& fn, auto&& v) {
           fn(std::forward<decltype(v)>(v));
@@ -1105,7 +1103,7 @@ class async_adapter_t {
    */
   auto count() &&
   -> std::future<std::uintmax_t> {
-    return reduce(
+    return std::move(*this).reduce(
         []() -> std::uintmax_t { return 0u; },
         [](std::uintmax_t& c, [[maybe_unused]] const auto& v) {
           if (c == std::numeric_limits<std::uintmax_t>::max())
@@ -1129,9 +1127,9 @@ class async_adapter_t {
    * \returns The minimum value of elements in the objpipe.
    */
   template<typename Pred = std::less<value_type>>
-  auto min(Pred pred = Pred())
+  auto min(Pred pred = Pred()) &&
   -> std::future<std::optional<value_type>> {
-    return reduce(
+    return std::move(*this).reduce(
         []() -> std::optional<value_type> { return {}; },
         [pred](std::optional<value_type>& c, auto&& v) {
           if (!c.has_value() || std::invoke(pred, v, *c))
@@ -1153,9 +1151,9 @@ class async_adapter_t {
    * \returns The maximum value of elements in the objpipe.
    */
   template<typename Pred = std::less<value_type>>
-  auto max(Pred pred = Pred())
+  auto max(Pred pred = Pred()) &&
   -> std::future<std::optional<value_type>> {
-    return reduce(
+    return std::move(*this).reduce(
         []() -> std::optional<value_type> { return {}; },
         [pred](std::optional<value_type>& c, auto&& v) {
           if (!c.has_value() || std::invoke(pred, *c, v))
