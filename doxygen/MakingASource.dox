@@ -586,4 +586,9 @@ objpipe::of(std::move(connection))
     .iterate();
 \endcode
 
+\section making_a_source__further_reading Further reading
+
+- \ref making_ioc_push
+  on extending the \ref SourceConcept "source" with \ref IocPushConcept "IOC Push" logic.
+
  */
