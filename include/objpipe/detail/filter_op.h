@@ -246,7 +246,8 @@ class filter_op {
   template<typename PushTag, typename Acceptor>
   auto ioc_push(PushTag tag, Acceptor&& acceptor) &&
   -> std::enable_if_t<adapt::has_ioc_push<Source, PushTag>> {
-    return std::move(src_).ioc_push(
+    return adapt::ioc_push(
+        std::move(src_),
         tag,
         filter_push<std::decay_t<Acceptor>, Pred...>(std::forward<Acceptor>(acceptor), std::move(pred_)));
   }

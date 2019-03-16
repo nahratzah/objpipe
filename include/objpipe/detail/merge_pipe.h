@@ -1016,7 +1016,7 @@ class merge_pipe
         std::make_move_iterator(q.begin()),
         std::make_move_iterator(q.end()),
         [&tag, &acceptor](auto&& qelem) {
-          return std::move(qelem).underlying().ioc_push(tag, std::decay_t<Acceptor>(acceptor));
+          adapt::ioc_push(std::move(qelem), tag, std::decay_t<Acceptor>(acceptor));
         });
   }
 

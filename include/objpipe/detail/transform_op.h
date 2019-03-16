@@ -375,7 +375,8 @@ class transform_op {
   auto ioc_push(PushTag tag, Acceptor&& acceptor) &&
   noexcept
   -> std::enable_if_t<adapt::has_ioc_push<Source, PushTag>> {
-    std::move(src_).ioc_push(
+    adapt::ioc_push(
+        std::move(src_),
         tag,
         transform_push<std::decay_t<Acceptor>, fn_type>(std::forward<Acceptor>(acceptor), std::move(fn_)));
   }
