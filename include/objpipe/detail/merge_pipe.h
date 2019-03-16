@@ -986,7 +986,7 @@ class merge_pipe
 
     impl_type::start(
         sink_type(std::forward<Acceptor>(acceptor), tag),
-        singlethread_push(),
+        singlethread_push(tag),
         std::move(this->less_),
         std::move(*this).get_queue());
   }
@@ -1186,7 +1186,7 @@ class merge_reduce_pipe
 
     impl_type::start(
         sink_type(std::forward<Acceptor>(acceptor), std::move(do_merge_), tag),
-        singlethread_push(),
+        singlethread_push(tag),
         std::move(this->less_),
         std::move(*this).get_queue());
   }
