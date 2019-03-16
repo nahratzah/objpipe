@@ -31,8 +31,15 @@ struct select_first_op {
   template<typename T, typename U>
   constexpr auto operator()(std::pair<T, U>&& v) const
   noexcept
-  -> std::add_rvalue_reference_t<T> {
+  -> std::enable_if_t<!std::is_const_v<T>, std::add_rvalue_reference_t<T>> {
     return static_cast<std::add_rvalue_reference_t<T>>(v.first);
+  }
+
+  template<typename T, typename U>
+  constexpr auto operator()(std::pair<T, U>&& v) const
+  noexcept
+  -> std::enable_if_t<std::is_const_v<T>, std::add_lvalue_reference_t<T>> {
+    return v.first;
   }
 };
 
@@ -60,8 +67,15 @@ struct select_second_op {
   template<typename T, typename U>
   constexpr auto operator()(std::pair<T, U>&& v) const
   noexcept
-  -> std::add_rvalue_reference_t<U> {
+  -> std::enable_if_t<!std::is_const_v<U>, std::add_rvalue_reference_t<U>> {
     return static_cast<std::add_rvalue_reference_t<U>>(v.second);
+  }
+
+  template<typename T, typename U>
+  constexpr auto operator()(std::pair<T, U>&& v) const
+  noexcept
+  -> std::enable_if_t<std::is_const_v<U>, std::add_rvalue_reference_t<U>> {
+    return v.second;
   }
 };
 
