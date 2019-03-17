@@ -355,8 +355,7 @@ class virtual_pipe {
   auto ioc_push(PushTag&& tag, Acceptor&& acceptor) &&
   -> void {
     assert(pimpl_ != nullptr);
-    adapt::ioc_push(
-        std::move(*std::exchange(pimpl_, nullptr)),
+    std::move(*std::exchange(pimpl_, nullptr)).ioc_push(
         std::forward<PushTag>(tag),
         virtual_push_acceptor<T>(std::forward<Acceptor>(acceptor)));
   }
