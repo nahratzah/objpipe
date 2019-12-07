@@ -1134,6 +1134,7 @@ class async_adapter_t {
         [pred](std::optional<value_type>& c, auto&& v) {
           if (!c.has_value() || std::invoke(pred, v, *c))
             c.emplace(std::forward<decltype(v)>(v));
+          return objpipe_errc::success;
         },
         [pred](std::optional<value_type>& x, std::optional<value_type>&& y) {
           if (!y.has_value()) return;
@@ -1158,6 +1159,7 @@ class async_adapter_t {
         [pred](std::optional<value_type>& c, auto&& v) {
           if (!c.has_value() || std::invoke(pred, *c, v))
             c.emplace(std::forward<decltype(v)>(v));
+          return objpipe_errc::success;
         },
         [pred](std::optional<value_type>& x, std::optional<value_type>&& y) {
           if (!y.has_value()) return;
