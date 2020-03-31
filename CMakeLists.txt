@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.3)
 project (objpipe)
 
 set(OBJPIPE_VERSION_MAJOR 0 CACHE STRING "major version" FORCE)
-set(OBJPIPE_VERSION_MINOR 2 CACHE STRING "minor version" FORCE)
+set(OBJPIPE_VERSION_MINOR 3 CACHE STRING "minor version" FORCE)
 set(OBJPIPE_VERSION ${OBJPIPE_VERSION_MAJOR}.${OBJPIPE_VERSION_MINOR} CACHE STRING "version" FORCE)
 
 enable_testing()
