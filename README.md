@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/nahratzah/objpipe.svg?branch=master)](https://travis-ci.org/nahratzah/objpipe)
+
 # objpipe
 
 Objpipe is a library for iterating over collections, performing transformations,

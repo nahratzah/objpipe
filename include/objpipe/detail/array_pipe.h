@@ -129,8 +129,8 @@ class array_pipe {
   }
 
   auto try_pull()
-  noexcept(noexcept(pull()))
-  -> decltype(pull()) {
+  noexcept(noexcept(std::declval<array_pipe>().pull()))
+  -> decltype(std::declval<array_pipe>().pull()) {
     return pull();
   }
 

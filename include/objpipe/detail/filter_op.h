@@ -180,7 +180,7 @@ class filter_op {
   noexcept(
       std::is_nothrow_constructible_v<transport<adapt::try_pull_type<Source>>, store_type>
       && noexcept(std::declval<Source&>().pop_front())
-      && noexcept(adapt::raw_try_pull(src_))
+      && noexcept(adapt::raw_try_pull(std::declval<Source&>()))
       && noexcept_test)
   -> std::enable_if_t<Enable,
       transport<adapt::try_pull_type<Source>>> {
@@ -212,7 +212,7 @@ class filter_op {
   noexcept(
       std::is_nothrow_constructible_v<transport<adapt::pull_type<Source>>, store_type>
       && noexcept(std::declval<Source&>().pop_front())
-      && noexcept(adapt::raw_pull(src_))
+      && noexcept(adapt::raw_pull(std::declval<Source&>()))
       && noexcept_test)
   -> std::enable_if_t<Enable,
       transport<adapt::pull_type<Source>>> {

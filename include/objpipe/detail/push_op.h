@@ -351,7 +351,7 @@ class promise_reducer {
           if (e.code() == std::future_errc::promise_already_satisfied) {
             /* SKIP (swallow exception) */
           } else { // Only happens if the promise is in a bad state.
-            throw; // aborts, because noexcept, this is intentional
+            std::terminate();
           }
         }
       }
