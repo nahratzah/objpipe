@@ -324,7 +324,7 @@ class transform_op {
   }
 
   constexpr auto front()
-  noexcept(noexcept(invoke_fn_(std::declval<Source&>().front()))
+  noexcept(noexcept(std::declval<transform_op&>().invoke_fn_(std::declval<Source&>().front()))
       && (std::is_lvalue_reference_v<front_type>
           || std::is_rvalue_reference_v<front_type>
           || std::is_nothrow_constructible_v<std::decay_t<front_type>, raw_front_type>))
@@ -340,14 +340,14 @@ class transform_op {
 
   template<bool Enable = adapt::has_try_pull<Source>>
   constexpr auto try_pull()
-  noexcept(noexcept(invoke_fn_(adapt::raw_try_pull(std::declval<Source&>()))))
+  noexcept(noexcept(std::declval<transform_op&>().invoke_fn_(adapt::raw_try_pull(std::declval<Source&>()))))
   -> std::enable_if_t<Enable, transport<try_pull_type>> {
     return invoke_fn_(adapt::raw_try_pull(src_));
   }
 
   template<bool Enable = adapt::has_pull<Source>>
   constexpr auto pull()
-  noexcept(noexcept(invoke_fn_(adapt::raw_pull(std::declval<Source&>()))))
+  noexcept(noexcept(std::declval<transform_op&>().invoke_fn_(adapt::raw_pull(std::declval<Source&>()))))
   -> std::enable_if_t<Enable, transport<pull_type>> {
     return invoke_fn_(adapt::raw_pull(src_));
   }
@@ -356,8 +356,8 @@ class transform_op {
   constexpr auto transform(NextFn&& next_fn) &&
   noexcept(noexcept(
           transform_op<Source, Fn..., NextFn>(
-              std::move(std::declval<Source&>()),
-              std::move(fn_).extend(std::forward<NextFn>(next_fn)))))
+              std::declval<Source>(),
+              std::declval<fn_type>().extend(std::forward<NextFn>(next_fn)))))
   -> transform_op<Source, Fn..., NextFn> {
     return transform_op<Source, Fn..., NextFn>(
         std::move(src_),
