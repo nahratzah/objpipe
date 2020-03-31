@@ -54,10 +54,7 @@ addons:
     packages:
       - libboost-dev
       - libboost-context-dev
-  homebrew:
-    update: true  # work around CI image being broken
-    packages:
-      - boost
+  # The apple CI instances come with boost pre-installed.
 
 before_script:
   # create a build folder for the out-of-source build
