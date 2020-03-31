@@ -52,13 +52,12 @@ jobs:
 addons:
   apt:
     packages:
-      - boost-dev
-      - boost-context-dev
+      - libboost-dev
+      - libboost-context-dev
   homebrew:
     update: true  # work around CI image being broken
     packages:
-      - boost-dev
-      - boost-context-dev
+      - boost
 
 before_script:
   # create a build folder for the out-of-source build
