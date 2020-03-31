@@ -190,7 +190,7 @@ class transform_fn_adapter<Arg, Fn> {
       const NextFn& next_fn = transform_identity_fn()) const
   noexcept(noexcept(
           std::invoke(next_fn,
-              std::invoke(fn_,
+              std::invoke(std::declval<const functor_type&>(),
                   std::declval<std::conditional_t<
                       is_cref_invocable,
                       arg_cref,
@@ -318,13 +318,13 @@ class transform_op {
   }
 
   constexpr auto wait()
-  noexcept(noexcept(src_.wait()))
+  noexcept(noexcept(std::declval<Source&>().wait()))
   -> objpipe_errc {
     return src_.wait();
   }
 
   constexpr auto front()
-  noexcept(noexcept(invoke_fn_(src_.front()))
+  noexcept(noexcept(invoke_fn_(std::declval<Source&>().front()))
       && (std::is_lvalue_reference_v<front_type>
           || std::is_rvalue_reference_v<front_type>
           || std::is_nothrow_constructible_v<std::decay_t<front_type>, raw_front_type>))
@@ -333,21 +333,21 @@ class transform_op {
   }
 
   constexpr auto pop_front()
-  noexcept(noexcept(src_.pop_front()))
+  noexcept(noexcept(std::declval<Source&>().pop_front()))
   -> objpipe_errc {
     return src_.pop_front();
   }
 
   template<bool Enable = adapt::has_try_pull<Source>>
   constexpr auto try_pull()
-  noexcept(noexcept(invoke_fn_(adapt::raw_try_pull(src_))))
+  noexcept(noexcept(invoke_fn_(adapt::raw_try_pull(std::declval<Source&>()))))
   -> std::enable_if_t<Enable, transport<try_pull_type>> {
     return invoke_fn_(adapt::raw_try_pull(src_));
   }
 
   template<bool Enable = adapt::has_pull<Source>>
   constexpr auto pull()
-  noexcept(noexcept(invoke_fn_(adapt::raw_pull(src_))))
+  noexcept(noexcept(invoke_fn_(adapt::raw_pull(std::declval<Source&>()))))
   -> std::enable_if_t<Enable, transport<pull_type>> {
     return invoke_fn_(adapt::raw_pull(src_));
   }
@@ -356,7 +356,7 @@ class transform_op {
   constexpr auto transform(NextFn&& next_fn) &&
   noexcept(noexcept(
           transform_op<Source, Fn..., NextFn>(
-              std::move(src_),
+              std::move(std::declval<Source&>()),
               std::move(fn_).extend(std::forward<NextFn>(next_fn)))))
   -> transform_op<Source, Fn..., NextFn> {
     return transform_op<Source, Fn..., NextFn>(

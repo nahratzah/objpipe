@@ -238,7 +238,7 @@ class flatten_op_store_data<Collection, false> {
   flatten_op_store_data(flatten_op_store_data&&) = default;
 
   auto empty() const
-  noexcept(noexcept(impl_.empty()))
+  noexcept(noexcept(std::declval<const impl_type&>().empty()))
   -> bool {
     return impl_.empty();
   }
