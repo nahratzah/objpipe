@@ -653,7 +653,8 @@ auto ioc_push(Source&& src, [[maybe_unused]] singlethread_push push_tag, Accepto
             try {
               for (;;) {
                 auto tx = adapt::raw_pull(src);
-                using value_type = typename decltype(tx)::value_type;
+                using tx_type = decltype(tx);
+                using value_type = typename tx_type::value_type;
 
                 if (tx.errc() == objpipe_errc::closed) {
                   break;
@@ -662,9 +663,9 @@ auto ioc_push(Source&& src, [[maybe_unused]] singlethread_push push_tag, Accepto
                 } else {
                   assert(tx.has_value());
                   objpipe_errc e;
-                  if constexpr(is_invocable_v<std::decay_t<Acceptor>&, typename decltype(tx)::type>)
+                  if constexpr(is_invocable_v<std::decay_t<Acceptor>&, typename tx_type::type>)
                     e = std::invoke(acceptor, std::move(tx).value());
-                  else if constexpr(is_invocable_v<std::decay_t<Acceptor>&, value_type> && std::is_const_v<std::remove_reference_t<typename decltype(tx)::type>>)
+                  else if constexpr(is_invocable_v<std::decay_t<Acceptor>&, value_type> && std::is_const_v<std::remove_reference_t<typename tx_type::type>>)
                     e = std::invoke(acceptor, std::move(tx).by_value().value());
                   else
                     e = std::invoke(acceptor, tx.ref());

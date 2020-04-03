@@ -99,24 +99,21 @@ inline std::error_condition make_error_condition(objpipe_errc e) {
  * \ingroup objpipe_errors
  */
 inline std::ostream& operator<<(std::ostream& out, objpipe_errc e) {
-  using namespace std::string_view_literals;
-
-  std::string_view e_txt;
   switch (e) {
     case objpipe_errc::success:
-      e_txt = "objpipe_errc[success]"sv;
+      out << "objpipe_errc[success]";
       break;
     case objpipe_errc::closed:
-      e_txt = "objpipe_errc[closed]"sv;
+      out << "objpipe_errc[closed]";
       break;
     case objpipe_errc::bad:
-      e_txt = "objpipe_errc[bad]"sv;
+      out << "objpipe_errc[bad]";
       break;
     case objpipe_errc::no_thread:
-      e_txt = "objpipe_errc[no_thread]"sv;
+      out << "objpipe_errc[no_thread]";
       break;
   }
-  return out << e_txt;
+  return out;
 }
 
 /**

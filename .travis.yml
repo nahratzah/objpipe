@@ -7,46 +7,46 @@ jobs:
   include:
     - env:
         - CXX=g++
-      before_install:
-        # We need to ensure the cmake config for UnitTest++ is installed properly,
-        # because the folks at ubuntu don't include the cmake files.
-        # We use the system compiler to mimic the OS package.
-        - mkdir /tmp/unit_test_plus_plus
-        - pushd /tmp/unit_test_plus_plus
-        - wget -O /tmp/unittest-cpp-v2.0.0.tar.gz https://github.com/unittest-cpp/unittest-cpp/archive/v2.0.0.tar.gz
-        - tar zxf /tmp/unittest-cpp-v2.0.0.tar.gz
-        - mkdir build
-        - cd build
-        - env -u CXX cmake ../unittest-cpp-2.0.0 && make && sudo make install
-        - popd
+        - SUDO=sudo
+        - CMAKE_BUILD_TYPE=Debug
     - env:
         - CXX=clang++
-      before_install:
-        # We need to ensure the cmake config for UnitTest++ is installed properly,
-        # because the folks at ubuntu don't include the cmake files.
-        # We use the system compiler to mimic the OS package.
-        - mkdir /tmp/unit_test_plus_plus
-        - pushd /tmp/unit_test_plus_plus
-        - wget -O /tmp/unittest-cpp-v2.0.0.tar.gz https://github.com/unittest-cpp/unittest-cpp/archive/v2.0.0.tar.gz
-        - tar zxf /tmp/unittest-cpp-v2.0.0.tar.gz
-        - mkdir build
-        - cd build
-        - env -u CXX cmake ../unittest-cpp-2.0.0 && make && sudo make install
-        - popd
-
+        - SUDO=sudo
+        - CMAKE_BUILD_TYPE=Debug
     - os: osx
       osx_image: xcode10.3
+      env:
+        - SUDO=sudo
+        - CMAKE_BUILD_TYPE=Debug
+    - os: windows
+      env:
+        - CMAKE_OPTS="-DCMAKE_INSTALL_PREFIX=${HOME}/dependencies -DCMAKE_PREFIX_PATH=${HOME}/dependencies"
+        - SUDO=""
+        - CMAKE_BUILD_TYPE=Debug
       before_install:
-        # The homebrew package suffers from the same shortcoming as the linux one:
-        # it is missing the cmake files.
-        # Just force it manually.
-        - mkdir /tmp/unit_test_plus_plus
-        - pushd /tmp/unit_test_plus_plus
-        - wget -O /tmp/unittest-cpp-v2.0.0.tar.gz https://github.com/unittest-cpp/unittest-cpp/archive/v2.0.0.tar.gz
+        - mkdir -p "${HOME}/dependencies"
+        # The homebrew and linux packages suffers from the same shortcoming: missing cmake files.
+        # While windows chocolatey doesn't have the package at all.
+        # So we use manual install.
+        - mkdir ${HOME}/unit_test_plus_plus
+        - pushd ${HOME}/unit_test_plus_plus
+        - wget -q -O /tmp/unittest-cpp-v2.0.0.tar.gz https://github.com/unittest-cpp/unittest-cpp/archive/v2.0.0.tar.gz
         - tar zxf /tmp/unittest-cpp-v2.0.0.tar.gz
         - mkdir build
         - cd build
-        - env -u CXX cmake ../unittest-cpp-2.0.0 && make && sudo make install
+        - env -u CXX cmake ${CMAKE_OPTS} ../unittest-cpp-2.0.0
+        - cmake --build . --config ${CMAKE_BUILD_TYPE}
+        - cmake --install . -v --prefix "${HOME}/dependencies" --config ${CMAKE_BUILD_TYPE}
+        - popd
+
+        # We also need to install boost.
+        - mkdir ${HOME}/boost
+        - pushd ${HOME}/boost
+        - wget -q -O /tmp/boost.tar.gz http://sourceforge.net/projects/boost/files/boost/1.72.0/boost_1_72_0.tar.gz
+        - tar zxf /tmp/boost.tar.gz
+        - cd boost_1_72_0
+        - env -u CXX ./bootstrap.bat
+        - env -u CXX ./b2 install --with-context --prefix=${HOME}/dependencies toolset=msvc variant=debug link=static threading=multi address-model=32 'asmflags=\safeseh'
         - popd
 
 addons:
@@ -56,6 +56,21 @@ addons:
       - libboost-context-dev
   # The apple CI instances come with boost pre-installed.
 
+before_install:
+  # The homebrew and linux packages suffers from the same shortcoming: missing cmake files.
+  # While windows chocolatey doesn't have the package at all.
+  # So we use manual install.
+  - mkdir /tmp/unit_test_plus_plus
+  - pushd /tmp/unit_test_plus_plus
+  - wget -q -O /tmp/unittest-cpp-v2.0.0.tar.gz https://github.com/unittest-cpp/unittest-cpp/archive/v2.0.0.tar.gz
+  - tar zxf /tmp/unittest-cpp-v2.0.0.tar.gz
+  - mkdir build
+  - cd build
+  - env -u CXX cmake ../unittest-cpp-2.0.0
+  - make
+  - ${SUDO} make install
+  - popd
+
 before_script:
   # create a build folder for the out-of-source build
   - mkdir build
@@ -63,6 +78,6 @@ before_script:
   - cd build
 
 script:
-  - cmake ..
-  - make
-  - make test
+  - cmake ${CMAKE_OPTS} ..
+  - cmake --build . --config ${CMAKE_BUILD_TYPE}
+  - ctest -C ${CMAKE_BUILD_TYPE} --output-on-failure

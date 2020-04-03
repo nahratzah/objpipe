@@ -1,22 +1,18 @@
-cmake_minimum_required(VERSION 3.3)
+cmake_minimum_required(VERSION 3.8)
 project (objpipe)
 
 set(OBJPIPE_VERSION_MAJOR 0 CACHE STRING "major version" FORCE)
 set(OBJPIPE_VERSION_MINOR 3 CACHE STRING "minor version" FORCE)
 set(OBJPIPE_VERSION ${OBJPIPE_VERSION_MAJOR}.${OBJPIPE_VERSION_MINOR} CACHE STRING "version" FORCE)
 
-enable_testing()
+# On windows, DLLs must be either in the search path, or in the same directory as the executable.
+# Since our test binaries are in a subdirectory, our tests fail under windows because they can't load the DLL.
+# In order to sidestep that, we use the CMAKE_RUNTIME_OUTPUT_DIRECTORY to get all executables into the same directory.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 
-include (CheckCXXCompilerFlag)
-check_cxx_compiler_flag ("-std=c++17" STD_CXX17)
-check_cxx_compiler_flag ("-std=c++1z" STD_CXX1Z)
-if(STD_CXX17)
-  set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
-elseif(STD_CXX1Z)
-  set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1z")
-else()
-  message(WARNING "Cannot figure out how to enable C++17 on compiler.")
-endif()
+enable_testing()
 
 set(headers
     include/objpipe/array.h
@@ -53,6 +49,7 @@ set(headers_detail
     )
 
 add_library (objpipe INTERFACE)
+target_compile_features (objpipe INTERFACE cxx_std_17)
 
 find_package (Boost COMPONENTS context REQUIRED)
 target_link_libraries (objpipe INTERFACE ${Boost_CONTEXT_LIBRARY})

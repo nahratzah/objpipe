@@ -28,15 +28,20 @@ class callback_push {
   {}
 
   void operator()(const T& v) {
-    (*this)(T(v)); // Copy
+    T copy = v;
+    do_(std::move(copy)); // Copy
   }
 
   void operator()(T&& v) {
+    do_(std::move(v));
+  }
+
+ private:
+  void do_(T&& v) {
     assert(impl_ != nullptr);
     (*impl_)(std::addressof(static_cast<T&>(v)));
   }
 
- private:
   impl_type* impl_ = nullptr;
 };
 

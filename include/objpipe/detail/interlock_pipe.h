@@ -37,11 +37,16 @@ class interlock_acceptor_intf {
    * \brief Publish method.
    * \details Used by \ref interlock_writer "writers" to publish values.
    */
-  virtual auto publish(std::conditional_t<std::is_const_v<T>,
+  auto publish(std::conditional_t<std::is_const_v<T>,
       std::add_lvalue_reference_t<std::add_const_t<value_type>>,
       std::add_rvalue_reference_t<value_type>> v)
   noexcept
-  -> std::variant<objpipe_errc, interlock_acceptor_intf*> = 0;
+  -> std::variant<objpipe_errc, interlock_acceptor_intf*> {
+    if constexpr(std::is_const_v<T>)
+      return do_publish_(v);
+    else
+      return do_publish_(std::move(v));
+  }
 
   /**
    * \brief Publish method for const values.
@@ -62,7 +67,8 @@ class interlock_acceptor_intf {
   auto publish(std::add_lvalue_reference_t<std::add_const_t<value_type>> v)
   noexcept
   -> std::enable_if_t<Enable, std::variant<objpipe_errc, interlock_acceptor_intf*>> {
-    return publish(T(v));
+    T copy = v;
+    return do_publish_(std::move(copy));
   }
 
   /**
@@ -93,6 +99,17 @@ class interlock_acceptor_intf {
     inc_writer();
     return this;
   }
+
+ private:
+  /**
+   * \brief Publish method.
+   * \details Used by \ref interlock_writer "writers" to publish values.
+   */
+  virtual auto do_publish_(std::conditional_t<std::is_const_v<T>,
+      std::add_lvalue_reference_t<std::add_const_t<value_type>>,
+      std::add_rvalue_reference_t<value_type>> v)
+  noexcept
+  -> std::variant<objpipe_errc, interlock_acceptor_intf*> = 0;
 };
 
 
@@ -130,25 +147,6 @@ class interlock_acceptor_impl_shared final
   ///\brief Destructor.
   ~interlock_acceptor_impl_shared() noexcept override {}
 
-  ///\brief Push a value into the acceptor.
-  auto publish(std::conditional_t<std::is_const_v<T>,
-      std::add_lvalue_reference_t<std::add_const_t<value_type>>,
-      std::add_rvalue_reference_t<value_type>> v)
-  noexcept
-  -> std::variant<objpipe_errc, interlock_acceptor_intf<T>*> override {
-    std::lock_guard<std::mutex> lck{ mtx_ };
-
-    try {
-      if constexpr(std::is_const_v<T>)
-        return acceptor_(v);
-      else
-        return acceptor_(std::move(v));
-    } catch (...) {
-      acceptor_.push_exception(std::current_exception());
-      return objpipe_errc::bad;
-    }
-  }
-
   ///\brief Push an exception into the acceptor.
   auto publish_exception(std::exception_ptr exptr)
   noexcept
@@ -174,6 +172,25 @@ class interlock_acceptor_impl_shared final
   }
 
  private:
+  ///\brief Push a value into the acceptor.
+  auto do_publish_(std::conditional_t<std::is_const_v<T>,
+      std::add_lvalue_reference_t<std::add_const_t<value_type>>,
+      std::add_rvalue_reference_t<value_type>> v)
+  noexcept
+  -> std::variant<objpipe_errc, interlock_acceptor_intf<T>*> override {
+    std::lock_guard<std::mutex> lck{ mtx_ };
+
+    try {
+      if constexpr(std::is_const_v<T>)
+        return acceptor_(v);
+      else
+        return acceptor_(std::move(v));
+    } catch (...) {
+      acceptor_.push_exception(std::current_exception());
+      return objpipe_errc::bad;
+    }
+  }
+
   ///\brief Mutex, to serialize access to acceptor_.
   std::mutex mtx_;
   ///\brief Acceptor that is to receive values.
@@ -223,24 +240,6 @@ class interlock_acceptor_impl_unordered final
   ///\brief Destructor.
   ~interlock_acceptor_impl_unordered() noexcept override {}
 
-  ///\brief Push a value into the acceptor.
-  ///\note This method is not thread safe.
-  auto publish(std::conditional_t<std::is_const_v<T>,
-      std::add_lvalue_reference_t<std::add_const_t<value_type>>,
-      std::add_rvalue_reference_t<value_type>> v)
-  noexcept
-  -> std::variant<objpipe_errc, interlock_acceptor_intf<T>*> override {
-    try {
-      if constexpr(std::is_const_v<T>)
-        return acceptor_(v);
-      else
-        return acceptor_(std::move(v));
-    } catch (...) {
-      acceptor_.push_exception(std::current_exception());
-      return objpipe_errc::bad;
-    }
-  }
-
   ///\brief Push an exception into the acceptor.
   ///\note This method is not thread safe.
   auto publish_exception(std::exception_ptr exptr)
@@ -273,6 +272,24 @@ class interlock_acceptor_impl_unordered final
   }
 
  private:
+  ///\brief Push a value into the acceptor.
+  ///\note This method is not thread safe.
+  auto do_publish_(std::conditional_t<std::is_const_v<T>,
+      std::add_lvalue_reference_t<std::add_const_t<value_type>>,
+      std::add_rvalue_reference_t<value_type>> v)
+  noexcept
+  -> std::variant<objpipe_errc, interlock_acceptor_intf<T>*> override {
+    try {
+      if constexpr(std::is_const_v<T>)
+        return acceptor_(v);
+      else
+        return acceptor_(std::move(v));
+    } catch (...) {
+      acceptor_.push_exception(std::current_exception());
+      return objpipe_errc::bad;
+    }
+  }
+
   ///\brief Wrapped acceptor.
   Acceptor acceptor_;
   ///\brief Reference counter.
@@ -420,48 +437,6 @@ class interlock_impl final
     return result;
   }
 
-  auto publish(std::conditional_t<std::is_const_v<T>,
-      std::add_lvalue_reference_t<std::add_const_t<value_type>>,
-      std::add_rvalue_reference_t<value_type>> v) noexcept
-  -> std::variant<objpipe_errc, interlock_acceptor_intf<T>*> override {
-    std::unique_lock<std::mutex> lck_{ guard_ };
-    write_ready_.wait(lck_,
-        [this]() {
-          return offered_ == nullptr || exptr_ != nullptr || reader_count_ == 0 || acceptor_ != nullptr;
-        });
-    if (acceptor_ != nullptr) {
-      std::variant<objpipe_errc, interlock_acceptor_intf<T>*> publish_result;
-      if constexpr(std::is_const_v<T>)
-        publish_result = acceptor_->publish(v);
-      else
-        publish_result = acceptor_->publish(std::move(v));
-      if (std::holds_alternative<objpipe_errc>(publish_result) && std::get<objpipe_errc>(publish_result) != objpipe_errc::success)
-        return publish_result;
-      return acceptor_;
-    }
-
-    if (exptr_ != nullptr) return objpipe_errc::bad;
-    if (reader_count_ == 0) return objpipe_errc::closed;
-
-    const std::add_pointer_t<T> v_ptr = std::addressof(v);
-    offered_ = v_ptr;
-    read_ready_.notify_one();
-    write_done_.wait(lck_,
-        [this, v_ptr]() {
-          return offered_ != v_ptr || exptr_ != nullptr || reader_count_ == 0;
-        });
-
-    if (offered_ != v_ptr) {
-      if (acceptor_ != nullptr) return acceptor_;
-      return objpipe_errc::success;
-    }
-
-    offered_ = nullptr;
-    if (exptr_ != nullptr) return objpipe_errc::bad;
-    assert(reader_count_ == 0);
-    return objpipe_errc::closed;
-  }
-
   auto publish_exception(std::exception_ptr exptr) noexcept
   -> objpipe_errc override {
     assert(exptr != nullptr);
@@ -576,6 +551,48 @@ class interlock_impl final
   }
 
  private:
+  auto do_publish_(std::conditional_t<std::is_const_v<T>,
+      std::add_lvalue_reference_t<std::add_const_t<value_type>>,
+      std::add_rvalue_reference_t<value_type>> v) noexcept
+  -> std::variant<objpipe_errc, interlock_acceptor_intf<T>*> override {
+    std::unique_lock<std::mutex> lck_{ guard_ };
+    write_ready_.wait(lck_,
+        [this]() {
+          return offered_ == nullptr || exptr_ != nullptr || reader_count_ == 0 || acceptor_ != nullptr;
+        });
+    if (acceptor_ != nullptr) {
+      std::variant<objpipe_errc, interlock_acceptor_intf<T>*> publish_result;
+      if constexpr(std::is_const_v<T>)
+        publish_result = acceptor_->publish(v);
+      else
+        publish_result = acceptor_->publish(std::move(v));
+      if (std::holds_alternative<objpipe_errc>(publish_result) && std::get<objpipe_errc>(publish_result) != objpipe_errc::success)
+        return publish_result;
+      return acceptor_;
+    }
+
+    if (exptr_ != nullptr) return objpipe_errc::bad;
+    if (reader_count_ == 0) return objpipe_errc::closed;
+
+    const std::add_pointer_t<T> v_ptr = std::addressof(v);
+    offered_ = v_ptr;
+    read_ready_.notify_one();
+    write_done_.wait(lck_,
+        [this, v_ptr]() {
+          return offered_ != v_ptr || exptr_ != nullptr || reader_count_ == 0;
+        });
+
+    if (offered_ != v_ptr) {
+      if (acceptor_ != nullptr) return acceptor_;
+      return objpipe_errc::success;
+    }
+
+    offered_ = nullptr;
+    if (exptr_ != nullptr) return objpipe_errc::bad;
+    assert(reader_count_ == 0);
+    return objpipe_errc::closed;
+  }
+
   auto get(const std::unique_lock<std::mutex>& lck) const
   noexcept
   -> std::conditional_t<std::is_const_v<T>,

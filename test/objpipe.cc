@@ -329,13 +329,13 @@ TEST(interlock_push) {
     expect.push_back(i);
 
   auto th1 = std::thread(std::bind(
-          [](objpipe::interlock_writer<std::pair<int, int>>& writer) {
+          [COUNT](objpipe::interlock_writer<std::pair<int, int>>& writer) {
             for (int i = 0; i < COUNT; ++i)
               writer(std::make_pair(1, i));
           },
           writer));
   auto th2 = std::thread(std::bind(
-          [](objpipe::interlock_writer<std::pair<int, int>>& writer) {
+          [COUNT](objpipe::interlock_writer<std::pair<int, int>>& writer) {
             for (int i = 0; i < COUNT; ++i)
               writer(std::make_pair(2, i));
           },
@@ -377,13 +377,13 @@ TEST(interlock_push_unordered) {
     expect.push_back(i);
 
   auto th1 = std::thread(std::bind(
-          [](objpipe::interlock_writer<std::pair<int, int>>& writer) {
+          [COUNT](objpipe::interlock_writer<std::pair<int, int>>& writer) {
             for (int i = 0; i < COUNT; ++i)
               writer(std::make_pair(1, i));
           },
           writer));
   auto th2 = std::thread(std::bind(
-          [](objpipe::interlock_writer<std::pair<int, int>>& writer) {
+          [COUNT](objpipe::interlock_writer<std::pair<int, int>>& writer) {
             for (int i = 0; i < COUNT; ++i)
               writer(std::make_pair(2, i));
           },
